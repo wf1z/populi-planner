@@ -53,21 +53,57 @@ At the top of the page:
 
 ---
 
-## 🎨 Where to Change Colors and Styling
+## 🎨 Design Rules & Styling
 
-All theme controls (colors, fonts, border radiuses, and spacing) are located at the top of **`styles.css`** inside the `:root` block:
+### Design Rules for the Future
+1. **Never hardcode colors**: Always reference the CSS custom properties in `:root` (e.g. `var(--bg-color)`, `var(--input-bg)`, `var(--text-main)`).
+2. **Never overwrite existing `:root` theme values**: Preserve the custom dark palette across all future features and updates.
+
+### Theme Variables (`styles.css`)
+
+All theme controls live in **`styles.css`** inside the `:root` block:
 
 ```css
 :root {
+  color-scheme: dark;
+
   /* Page Colors */
-  --bg-color: #f8fafc;
-  --card-bg: #ffffff;
-  --primary: #2563eb;          /* Accent color for buttons & active focus */
+  --bg-color: #0f0d12;
+  --card-bg: #1a1720;
+  --card-border: #2e2937;
+  --input-bg: #221e29;
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+
+  /* Text Colors */
+  --text-main: #ffffff;
+  --text-muted: #d4cdd9;
+  --text-dim: #9a92a3;
+
+  /* Accent (silvery pink) */
+  --primary: #e0b8c8;
+  --primary-hover: #efcfdc;
+
+  /* Course Tag */
+  --course-tag-bg: rgba(224, 184, 200, 0.12);
+  --course-tag-text: #e8c4d2;
+  --course-tag-border: rgba(224, 184, 200, 0.3);
 
   /* Badges */
-  --badge-new-bg: #ecfdf5;     /* Green background for 'New' items */
-  --badge-changed-bg: #fffbeb; /* Amber background for changed dates */
-  --badge-overdue-bg: #fef2f2; /* Rose background for overdue section */
+  --badge-new-bg: #0f2a22;
+  --badge-new-text: #6ee7b7;
+  --badge-new-border: #1f5c46;
+  --badge-changed-bg: #2a2210;
+  --badge-changed-text: #fcd34d;
+  --badge-changed-border: #5c4a14;
+
+  /* Overdue / Delete (danger) */
+  --danger-bg: #2a1218;
+  --danger-text: #fda4af;
+  --danger-border: #5c2030;
+
+  /* Planned (checked off) */
+  --planned-opacity: 0.5;
+  --planned-card-bg: #141218;
 }
 ```
 
@@ -88,5 +124,5 @@ git status
 git add .
 
 # 4. Commit your changes
-git commit -m "Add manual assignment entry, edit/delete actions, badge history checkboxes, and backup export/import"
+git commit -m "Restore custom dark theme, eliminate hardcoded colors, and establish design rules"
 ```

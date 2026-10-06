@@ -2,46 +2,45 @@
    THEME SETTINGS & VARIABLES (Customize colors, fonts, and spacing here)
    ========================================================================== */
 :root {
+  color-scheme: dark;
+
   /* Page Colors */
-  --bg-color: #f8fafc;
-  --card-bg: #ffffff;
-  --card-border: #e2e8f0;
-  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  
+  --bg-color: #0f0d12;
+  --card-bg: #1a1720;
+  --card-border: #2e2937;
+  --input-bg: #221e29;
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+
   /* Text Colors */
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --text-dim: #94a3b8;
+  --text-main: #ffffff;
+  --text-muted: #d4cdd9;
+  --text-dim: #9a92a3;
 
-  /* Accent & Action Colors */
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --danger: #dc2626;
-  --danger-hover: #b91c1c;
-  --neutral-btn-bg: #f1f5f9;
-  --neutral-btn-hover: #e2e8f0;
+  /* Accent (silvery pink) */
+  --primary: #e0b8c8;
+  --primary-hover: #efcfdc;
 
-  /* Course Tag Colors */
-  --course-tag-bg: #eff6ff;
-  --course-tag-text: #1d4ed8;
-  --course-tag-border: #bfdbfe;
+  /* Course Tag */
+  --course-tag-bg: rgba(224, 184, 200, 0.12);
+  --course-tag-text: #e8c4d2;
+  --course-tag-border: rgba(224, 184, 200, 0.3);
 
   /* Badges */
-  --badge-new-bg: #ecfdf5;
-  --badge-new-text: #047857;
-  --badge-new-border: #a7f3d0;
+  --badge-new-bg: #0f2a22;
+  --badge-new-text: #6ee7b7;
+  --badge-new-border: #1f5c46;
+  --badge-changed-bg: #2a2210;
+  --badge-changed-text: #fcd34d;
+  --badge-changed-border: #5c4a14;
 
-  --badge-changed-bg: #fffbeb;
-  --badge-changed-text: #b45309;
-  --badge-changed-border: #fde68a;
+  /* Overdue / Delete (danger) */
+  --danger-bg: #2a1218;
+  --danger-text: #fda4af;
+  --danger-border: #5c2030;
 
-  --badge-overdue-bg: #fef2f2;
-  --badge-overdue-text: #b91c1c;
-  --badge-overdue-border: #fecaca;
-
-  /* Planned (Checked off) Card State */
-  --planned-opacity: 0.55;
-  --planned-card-bg: #f8fafc;
+  /* Planned (checked off) */
+  --planned-opacity: 0.5;
+  --planned-card-bg: #141218;
 
   /* Fonts & Sizing */
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -125,23 +124,24 @@ header {
   font-family: inherit;
   border-radius: var(--radius-sm);
   border: 1px solid var(--card-border);
-  background-color: var(--neutral-btn-bg);
+  background-color: var(--input-bg);
   color: var(--text-main);
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
 
 .btn-tool:hover {
-  background-color: var(--neutral-btn-hover);
+  background-color: var(--card-border);
 }
 
 .btn-tool-danger {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .btn-tool-danger:hover {
-  background-color: #fee2e2;
-  border-color: #fca5a5;
+  background-color: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
 }
 
 /* ==========================================================================
@@ -190,7 +190,7 @@ header {
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--card-border);
-  background-color: #ffffff;
+  background-color: var(--input-bg);
   font-family: inherit;
   font-size: 0.9rem;
   color: var(--text-main);
@@ -207,7 +207,7 @@ header {
   grid-template-columns: 1fr 2fr;
   gap: var(--space-sm);
   padding: var(--space-sm);
-  background-color: var(--bg-color);
+  background-color: var(--input-bg);
   border: 1px dashed var(--card-border);
   border-radius: var(--radius-sm);
   margin-top: var(--space-xs);
@@ -231,11 +231,11 @@ header {
 .btn-primary {
   padding: 8px 18px;
   background-color: var(--primary);
-  color: #ffffff;
+  color: var(--bg-color);
   border: none;
   border-radius: var(--radius-sm);
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -255,7 +255,8 @@ header {
 }
 
 .btn-cancel:hover {
-  background-color: var(--neutral-btn-bg);
+  background-color: var(--input-bg);
+  color: var(--text-main);
 }
 
 /* ==========================================================================
@@ -283,7 +284,7 @@ header {
   padding: 6px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--card-border);
-  background-color: #fff;
+  background-color: var(--input-bg);
   font-family: inherit;
   font-size: 0.9rem;
   color: var(--text-main);
@@ -323,14 +324,14 @@ header {
 }
 
 .section-overdue .section-title {
-  color: var(--danger);
-  border-bottom-color: var(--badge-overdue-border);
+  color: var(--danger-text);
+  border-bottom-color: var(--danger-border);
 }
 
 .section-overdue .section-count {
-  background-color: var(--badge-overdue-bg);
-  color: var(--danger);
-  border: 1px solid var(--badge-overdue-border);
+  background-color: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
 }
 
 .cards-container {
@@ -424,9 +425,9 @@ header {
 }
 
 .badge-overdue {
-  background-color: var(--badge-overdue-bg);
-  color: var(--badge-overdue-text);
-  border: 1px solid var(--badge-overdue-border);
+  background-color: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
 }
 
 .card-title {
@@ -458,7 +459,7 @@ header {
   padding: 4px 8px;
   font-size: 0.75rem;
   font-weight: 600;
-  background-color: var(--neutral-btn-bg);
+  background-color: var(--input-bg);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
@@ -467,14 +468,14 @@ header {
 }
 
 .btn-card-action:hover {
-  background-color: var(--neutral-btn-hover);
+  background-color: var(--card-border);
   color: var(--text-main);
 }
 
 .btn-card-delete:hover {
-  background-color: #fee2e2;
-  border-color: #fca5a5;
-  color: var(--danger);
+  background-color: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
 }
 
 /* Planned State (Checked off) */
