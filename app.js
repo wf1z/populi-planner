@@ -7,10 +7,10 @@ let currentEditingId = null;
 // Tracks active tab: "planner" or "schedule".
 let currentActiveTab = "planner";
 
-// Stores reference to the element that triggered the dialog for restoring focus on close.
+// Stores reference to the element that triggered the assignment dialog for restoring focus on close.
 let lastFocusedElement = null;
 
-// Tracks whether mousedown originated on the dialog backdrop.
+// Tracks whether mousedown originated on the assignment dialog backdrop.
 let isBackdropMouseDown = false;
 
 // Parses a "YYYY-MM-DD" string into a local Date at midnight.
@@ -173,37 +173,48 @@ function renderSection(containerId, countId, itemsList) {
   });
 }
 
-// Updates both the filter dropdown and the form course select with unique courses.
-function syncCourseDropdowns(assignments) {
+// Aggregates and synchronizes shared courses across assignments, classes, and form dropdowns.
+function syncAllCourseDropdowns(assignments, classes) {
   const courseFilter = document.getElementById("course-filter");
   const formCourseSelect = document.getElementById("form-course");
 
-  const currentFilterValue = courseFilter.value;
+  const currentFilterValue = courseFilter ? courseFilter.value : "all";
   const currentFormValue = formCourseSelect ? formCourseSelect.value : null;
 
-  // Collect unique courses mapped by courseCode
+  // Gather normalized course map from BOTH assignments and classes
   const courseMap = new Map();
+
   assignments.forEach(item => {
-    if (item.courseCode && !courseMap.has(item.courseCode)) {
-      courseMap.set(item.courseCode, item.courseName || item.courseCode);
+    const code = normalizeCourseCode(item.courseCode);
+    if (code && !courseMap.has(code)) {
+      courseMap.set(code, item.courseName || code);
+    }
+  });
+
+  classes.forEach(item => {
+    const code = normalizeCourseCode(item.courseCode);
+    if (code && !courseMap.has(code)) {
+      courseMap.set(code, item.courseName || code);
     }
   });
 
   // Rebuild course filter dropdown
-  courseFilter.innerHTML = '<option value="all">All Courses</option>';
-  courseMap.forEach((name, code) => {
-    const opt = document.createElement("option");
-    opt.value = code;
-    opt.textContent = code;
-    courseFilter.appendChild(opt);
-  });
-  if (courseMap.has(currentFilterValue)) {
-    courseFilter.value = currentFilterValue;
-  } else {
-    courseFilter.value = "all";
+  if (courseFilter) {
+    courseFilter.innerHTML = '<option value="all">All Courses</option>';
+    courseMap.forEach((name, code) => {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = code;
+      courseFilter.appendChild(opt);
+    });
+    if (courseMap.has(currentFilterValue)) {
+      courseFilter.value = currentFilterValue;
+    } else {
+      courseFilter.value = "all";
+    }
   }
 
-  // Rebuild form course dropdown if it exists
+  // Rebuild assignment form course dropdown
   if (formCourseSelect) {
     formCourseSelect.innerHTML = "";
     courseMap.forEach((name, code) => {
@@ -228,9 +239,14 @@ function syncCourseDropdowns(assignments) {
 
     updateNewCourseVisibility();
   }
+
+  // Sync to class dialog dropdown in schedule.js
+  if (typeof window.syncClassCourseDropdown === "function") {
+    window.syncClassCourseDropdown(courseMap);
+  }
 }
 
-// Shows or hides the custom course input fields based on course selector choice.
+// Shows or hides the custom course input fields in the assignment dialog.
 function updateNewCourseVisibility() {
   const formCourseSelect = document.getElementById("form-course");
   const newCourseFields = document.getElementById("new-course-fields");
@@ -322,16 +338,17 @@ function getValidatedFormValues() {
   let courseName = "";
 
   if (courseSelectValue === "__NEW__") {
-    courseCode = document.getElementById("new-course-code").value.trim();
+    courseCode = normalizeCourseCode(document.getElementById("new-course-code").value);
     courseName = document.getElementById("new-course-name").value.trim() || courseCode;
     if (!courseCode) {
       alert("Please enter a course code.");
       return null;
     }
   } else {
-    courseCode = courseSelectValue;
+    courseCode = normalizeCourseCode(courseSelectValue);
     const assignments = getStoredAssignments();
-    const match = assignments.find(item => item.courseCode === courseCode);
+    const classes = getStoredClasses();
+    const match = [...assignments, ...classes].find(item => normalizeCourseCode(item.courseCode) === courseCode);
     courseName = match ? (match.courseName || courseCode) : courseCode;
   }
 
@@ -392,7 +409,7 @@ function handleSaveAndAddAnother() {
   renderApp();
 }
 
-// Switches between the Planner and Schedule tabs and toggles visibility.
+// Switches between the Planner and Schedule tabs and toggles views and action buttons.
 function switchTab(tabName) {
   currentActiveTab = tabName;
 
@@ -408,7 +425,6 @@ function switchTab(tabName) {
     plannerPanel.style.display = "block";
     schedulePanel.style.display = "none";
 
-    // In Stage 1: Action button is visible and active on Planner
     topActionBtn.style.display = "inline-block";
     topActionBtn.textContent = "+ Add assignment";
   } else {
@@ -417,15 +433,16 @@ function switchTab(tabName) {
     plannerPanel.style.display = "none";
     schedulePanel.style.display = "block";
 
-    // In Stage 1: Action button is hidden on Schedule until Stage 2 exists
-    topActionBtn.style.display = "none";
+    topActionBtn.style.display = "inline-block";
+    topActionBtn.textContent = "+ Add class";
   }
 }
 
-// Renders all assignment sections and the calendar, preserving active keyboard focus.
+// Renders all assignment sections, the calendar, and the schedule, preserving active focus.
 function renderApp() {
-  const dialog = document.getElementById("assignment-dialog");
-  const isDialogOpen = dialog && dialog.open;
+  const assignmentDialog = document.getElementById("assignment-dialog");
+  const classDialog = document.getElementById("class-dialog");
+  const isDialogOpen = (assignmentDialog && assignmentDialog.open) || (classDialog && classDialog.open);
 
   // Capture active focus if dialog is not open
   const activeEl = document.activeElement;
@@ -433,10 +450,12 @@ function renderApp() {
   const activeDateKey = (!isDialogOpen && activeEl && activeEl.dataset) ? activeEl.dataset.dateKey : null;
 
   const allAssignments = getStoredAssignments();
+  const allClasses = getStoredClasses();
   const selectedCourse = document.getElementById("course-filter").value;
   const welcomeBox = document.getElementById("welcome-empty-state");
 
-  syncCourseDropdowns(allAssignments);
+  // Sync courses across assignments, classes, and dialog dropdowns
+  syncAllCourseDropdowns(allAssignments, allClasses);
 
   // Show welcome state if no assignments exist at all
   if (allAssignments.length === 0) {
@@ -500,10 +519,15 @@ function renderApp() {
     window.renderCalendar(filtered);
   }
 
+  // Redraw Schedule tab (weekly grid & class meetings list)
+  if (typeof window.renderScheduleTab === "function") {
+    window.renderScheduleTab();
+  }
+
   // Ensure active tab view is preserved
   switchTab(currentActiveTab);
 
-  // Restore keyboard focus only if the dialog is not open
+  // Restore keyboard focus only if neither dialog is open
   if (!isDialogOpen) {
     if (activeId && document.getElementById(activeId)) {
       document.getElementById(activeId).focus();
@@ -516,21 +540,25 @@ function renderApp() {
   }
 }
 
-// Expose renderApp globally so calendar.js can trigger unified redraws
+// Expose renderApp globally so other modules can trigger unified redraws.
 window.renderApp = renderApp;
 
-// Connects toolbar, form, modal, and calendar event listeners and initiates first render.
+// Connects toolbar, forms, modals, tabs, and initiates first render.
 document.addEventListener("DOMContentLoaded", function () {
-  const dialog = document.getElementById("assignment-dialog");
+  const assignmentDialog = document.getElementById("assignment-dialog");
 
   // Tab switching
   document.getElementById("tab-btn-planner").addEventListener("click", () => switchTab("planner"));
   document.getElementById("tab-btn-schedule").addEventListener("click", () => switchTab("schedule"));
 
-  // Top action button (+ Add assignment)
+  // Top action button (+ Add assignment or + Add class)
   document.getElementById("top-action-btn").addEventListener("click", function () {
     if (currentActiveTab === "planner") {
       openAssignmentDialog("add");
+    } else {
+      if (typeof window.openClassDialog === "function") {
+        window.openClassDialog("add");
+      }
     }
   });
 
@@ -539,28 +567,25 @@ document.addEventListener("DOMContentLoaded", function () {
     openAssignmentDialog("add");
   });
 
-  // Dialog controls
+  // Assignment dialog controls
   document.getElementById("form-cancel-btn").addEventListener("click", closeAssignmentDialog);
   document.getElementById("dialog-close-btn").addEventListener("click", closeAssignmentDialog);
   document.getElementById("form-save-another-btn").addEventListener("click", handleSaveAndAddAnother);
   document.getElementById("assignment-form").addEventListener("submit", handleFormSubmit);
-
-  // Custom course fields toggle
   document.getElementById("form-course").addEventListener("change", updateNewCourseVisibility);
 
-  // Safe backdrop click handling: only close when BOTH mousedown and click happen on dialog backdrop
-  dialog.addEventListener("mousedown", function (event) {
-    isBackdropMouseDown = (event.target === dialog);
+  // Safe backdrop click handling for assignment dialog
+  assignmentDialog.addEventListener("mousedown", function (event) {
+    isBackdropMouseDown = (event.target === assignmentDialog);
   });
-  dialog.addEventListener("click", function (event) {
-    if (isBackdropMouseDown && event.target === dialog) {
+  assignmentDialog.addEventListener("click", function (event) {
+    if (isBackdropMouseDown && event.target === assignmentDialog) {
       closeAssignmentDialog();
     }
     isBackdropMouseDown = false;
   });
 
-  // Native Esc key closes dialog; restore focus
-  dialog.addEventListener("close", function () {
+  assignmentDialog.addEventListener("close", function () {
     if (lastFocusedElement && typeof lastFocusedElement.focus === "function") {
       lastFocusedElement.focus();
     }
@@ -569,23 +594,29 @@ document.addEventListener("DOMContentLoaded", function () {
   // Course filter change
   document.getElementById("course-filter").addEventListener("change", renderApp);
 
-  // Toolbar: Load Sample Data
+  // Toolbar: Load Sample Data (loads both assignments and classes)
   document.getElementById("btn-load-sample").addEventListener("click", function () {
-    const existing = getStoredAssignments();
-    if (existing.length > 0) {
-      if (!confirm("Loading sample data will replace your current assignments. Continue?")) {
+    const existingAssignments = getStoredAssignments();
+    const existingClasses = getStoredClasses();
+
+    if (existingAssignments.length > 0 || existingClasses.length > 0) {
+      if (!confirm("Loading sample data will replace your current assignments and classes. Continue?")) {
         return;
       }
     }
-    const freshSamples = window.getFreshSampleAssignments ? window.getFreshSampleAssignments() : [];
-    saveStoredAssignments(freshSamples);
+
+    const freshAssignments = window.getFreshSampleAssignments ? window.getFreshSampleAssignments() : [];
+    const freshClasses = window.getFreshSampleClasses ? window.getFreshSampleClasses() : [];
+
+    saveStoredAssignments(freshAssignments);
+    saveStoredClasses(freshClasses);
     renderApp();
   });
 
-  // Toolbar: Clear All Data
+  // Toolbar: Clear All Data (clears assignments, classes, and course colors)
   document.getElementById("btn-clear-all").addEventListener("click", function () {
-    if (confirm("Are you sure you want to clear ALL assignments? This cannot be undone.")) {
-      clearAllAssignments();
+    if (confirm("Are you sure you want to clear ALL assignments, classes, and settings? This cannot be undone.")) {
+      clearAllData();
       renderApp();
     }
   });
@@ -614,8 +645,20 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
 
-      if (confirm(`Valid backup found with ${result.assignments.length} assignments.\n\nImporting this backup will REPLACE all current assignments. Are you sure you want to proceed?`)) {
+      const countMsg = result.version === 2
+        ? `${result.assignments.length} assignments and ${result.classes.length} class meetings`
+        : `${result.assignments.length} assignments (Version 1 backup - existing class schedule will remain intact)`;
+
+      if (confirm(`Valid backup found with ${countMsg}.\n\nImporting this backup will REPLACE corresponding data. Are you sure you want to proceed?`)) {
         saveStoredAssignments(result.assignments);
+
+        if (result.version === 2 && Array.isArray(result.classes)) {
+          saveStoredClasses(result.classes);
+        }
+        if (result.courseColors) {
+          saveCourseColorMap(result.courseColors);
+        }
+
         renderApp();
         alert("Backup imported successfully!");
       }
@@ -626,6 +669,11 @@ document.addEventListener("DOMContentLoaded", function () {
   // Initialize calendar controls (Prev, Next, Today)
   if (typeof window.initCalendarControls === "function") {
     window.initCalendarControls();
+  }
+
+  // Initialize schedule controls (Class dialog controls)
+  if (typeof window.initScheduleControls === "function") {
+    window.initScheduleControls();
   }
 
   // First initial render

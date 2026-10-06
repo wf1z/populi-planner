@@ -23,6 +23,7 @@
   /* Accent (silvery pink) */
   --primary: #e0b8c8;
   --primary-hover: #efcfdc;
+  --on-primary: #1a1720;
 
   /* Course Tag */
   --course-tag-bg: rgba(224, 184, 200, 0.12);
@@ -45,6 +46,14 @@
   /* Planned (checked off) */
   --planned-opacity: 0.5;
   --planned-card-bg: #141218;
+
+  /* Course Schedule Colors (Muted tones readable with white text) */
+  --course-color-1: #6b3e52; /* Muted rose */
+  --course-color-2: #2d5045; /* Muted forest */
+  --course-color-3: #5a452a; /* Muted amber */
+  --course-color-4: #2d4560; /* Muted slate */
+  --course-color-5: #4b365c; /* Muted plum */
+  --course-color-6: #35534c; /* Muted teal */
 
   /* Fonts & Sizing */
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -165,21 +174,38 @@ body {
 }
 
 .btn-top-add {
-  padding: 7px 16px;
-  font-size: 0.85rem;
+  height: 38px;
+  padding: 0 16px;
+  font-size: 0.88rem;
   font-weight: 700;
   border-radius: var(--radius-sm);
   background-color: var(--primary);
-  color: var(--bg-color);
-  border: none;
+  color: var(--on-primary);
+  border: 1px solid var(--primary);
   cursor: pointer;
   font-family: inherit;
-  transition: background-color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .btn-top-add:hover {
   background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.btn-top-add:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.btn-top-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* ==========================================================================
@@ -287,21 +313,73 @@ dialog.modal-dialog::backdrop {
   flex-wrap: wrap;
 }
 
+.btn-primary {
+  height: 38px;
+  padding: 0 16px;
+  background-color: var(--primary);
+  color: var(--on-primary);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.btn-primary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .btn-secondary {
-  padding: 8px 14px;
+  height: 38px;
+  padding: 0 16px;
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-sm);
   color: var(--text-main);
   font-size: 0.88rem;
   font-weight: 600;
-  cursor: pointer;
   font-family: inherit;
-  transition: background-color 0.15s ease;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .btn-secondary:hover {
   background-color: var(--card-border);
+}
+
+.btn-secondary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* Form Controls Inside Dialog */
@@ -838,19 +916,37 @@ dialog.modal-dialog::backdrop {
 }
 
 .btn-empty-add {
-  padding: 8px 18px;
+  height: 38px;
+  padding: 0 18px;
   background-color: var(--primary);
-  color: var(--bg-color);
-  border: none;
+  color: var(--on-primary);
+  border: 1px solid var(--primary);
   border-radius: var(--radius-sm);
   font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .btn-empty-add:hover {
   background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.btn-empty-add:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.btn-empty-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .schedule-placeholder {
@@ -931,6 +1027,293 @@ dialog.modal-dialog::backdrop {
   background-color: var(--danger-bg);
   border-color: var(--danger-border);
   color: var(--danger-text);
+}
+
+/* ==========================================================================
+   SCHEDULE TAB: WEEKLY GRID & CLASS MEETINGS
+   ========================================================================== */
+.schedule-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  margin-top: var(--space-md);
+}
+
+.schedule-grid-scroll {
+  overflow-x: auto;
+  width: 100%;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background-color: var(--card-bg);
+  box-shadow: var(--card-shadow);
+}
+
+.schedule-grid-table {
+  min-width: 760px;
+  display: flex;
+  flex-direction: column;
+}
+
+.schedule-header-row {
+  display: grid;
+  grid-template-columns: 68px repeat(7, 1fr);
+  background-color: var(--input-bg);
+  border-bottom: 1px solid var(--card-border);
+}
+
+.schedule-header-corner {
+  border-right: 1px solid var(--card-border);
+}
+
+.schedule-header-day {
+  padding: 10px var(--space-xs);
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-right: 1px solid var(--card-border);
+}
+
+.schedule-header-day:last-child {
+  border-right: none;
+}
+
+.schedule-header-day.is-today {
+  color: var(--primary);
+  background-color: var(--card-bg);
+  border-bottom: 2px solid var(--primary);
+}
+
+.schedule-body {
+  display: grid;
+  grid-template-columns: 68px repeat(7, 1fr);
+  position: relative;
+}
+
+.schedule-time-col {
+  border-right: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  background-color: var(--input-bg);
+}
+
+.schedule-time-slot {
+  height: 60px;
+  padding: 4px 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-align: right;
+  border-bottom: 1px solid var(--card-border);
+  box-sizing: border-box;
+}
+
+.schedule-day-column {
+  position: relative;
+  border-right: 1px solid var(--card-border);
+  box-sizing: border-box;
+}
+
+.schedule-day-column:last-child {
+  border-right: none;
+}
+
+.schedule-day-column.is-today {
+  background-color: rgba(224, 184, 200, 0.03);
+}
+
+.schedule-hour-line {
+  height: 60px;
+  border-bottom: 1px solid var(--card-border);
+  box-sizing: border-box;
+}
+
+/* Positioned Class Event Blocks */
+.schedule-class-block {
+  position: absolute;
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  color: var(--text-main);
+  cursor: pointer;
+  border: 1px solid var(--card-border);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  transition: transform 0.1s ease, filter 0.15s ease;
+  z-index: 10;
+}
+
+.schedule-class-block:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+  z-index: 20;
+}
+
+.class-block-code {
+  font-weight: 800;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+.class-block-title {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.class-block-time {
+  font-size: 0.7rem;
+  opacity: 0.9;
+}
+
+.class-block-location {
+  font-size: 0.68rem;
+  opacity: 0.85;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Day Checkboxes Pills in Class Form */
+.days-checkboxes {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.day-pill-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--card-border);
+  background-color: var(--input-bg);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.day-pill-checkbox {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.day-pill-checkbox:checked + .day-pill-label {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--bg-color);
+  font-weight: 700;
+}
+
+.form-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: var(--space-xs);
+  font-style: italic;
+}
+
+.form-error-msg {
+  padding: 8px 12px;
+  margin-bottom: var(--space-md);
+  border-radius: var(--radius-sm);
+  background-color: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: none;
+}
+
+/* No Set Meeting Time Section */
+.unscheduled-section {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  box-shadow: var(--card-shadow);
+}
+
+.unscheduled-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Class Meetings Management Section */
+.meetings-section {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  box-shadow: var(--card-shadow);
+}
+
+.meetings-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.meetings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-md);
+}
+
+.meeting-card {
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  position: relative;
+}
+
+.meeting-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+
+.meeting-card-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.meeting-card-details {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.meeting-card-actions {
+  display: flex;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
 }
 
 /* ==========================================================================

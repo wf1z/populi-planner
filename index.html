@@ -135,11 +135,12 @@
 
     </div>
 
-    <!-- Tab Panel 2: Schedule (Coming in Stage 2 Placeholder) -->
+    <!-- Tab Panel 2: Schedule (Weekly Time Grid & Class Meetings) -->
     <div id="panel-schedule" role="tabpanel" aria-labelledby="tab-btn-schedule" style="display: none;">
-      <div class="schedule-placeholder">
-        <h3>Weekly Class Schedule</h3>
-        <p>Stage 2 is ready to build: a weekly time grid (Sunday–Saturday) with auto-fitting hours, overlapping class layout, and course colors.</p>
+      <div class="schedule-container">
+        <div id="schedule-grid-container"></div>
+        <div id="schedule-unscheduled-container" style="display: none;"></div>
+        <div id="schedule-meetings-list"></div>
       </div>
     </div>
 
@@ -205,13 +206,104 @@
     </div>
   </dialog>
 
+  <!-- Native Modal Dialog for Adding / Editing Class Meetings -->
+  <dialog id="class-dialog" class="modal-dialog">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h2 class="dialog-title" id="class-dialog-heading">Add Class Meeting</h2>
+        <button type="button" class="dialog-close-btn" id="class-dialog-close-btn" aria-label="Close dialog">&times;</button>
+      </div>
+      <form id="class-form">
+        <div class="dialog-body">
+          <div class="form-error-msg" id="class-form-error"></div>
+
+          <div class="form-grid">
+            <!-- Course Selection -->
+            <div class="form-group form-group-full">
+              <label for="class-course-select" class="form-label">Course</label>
+              <select id="class-course-select" class="form-select">
+                <!-- Shared courses populated dynamically -->
+              </select>
+
+              <!-- Custom Course Inputs -->
+              <div id="new-class-course-fields" class="new-course-box" style="display: none;">
+                <input type="text" id="new-class-course-code" class="form-input" placeholder="Code (e.g. THEO 201)">
+                <input type="text" id="new-class-course-name" class="form-input" placeholder="Course Name (e.g. Systematic Theology I)">
+              </div>
+            </div>
+
+            <!-- Checkbox: No set meeting time -->
+            <div class="form-group form-group-full checkbox-row" style="margin-bottom: var(--space-xs);">
+              <input type="checkbox" id="class-unscheduled">
+              <label for="class-unscheduled">No set meeting time <span class="form-hint" style="display: inline; margin-left: 4px;">(for chapel, performance-based, online, or flexible courses)</span></label>
+            </div>
+
+            <!-- Meeting Days Checkboxes -->
+            <div class="form-group form-group-full" id="class-days-group">
+              <label class="form-label">Meeting Days</label>
+              <div class="days-checkboxes">
+                <input type="checkbox" id="day-sun" value="0" class="class-day-checkbox day-pill-checkbox">
+                <label for="day-sun" class="day-pill-label">Sun</label>
+
+                <input type="checkbox" id="day-mon" value="1" class="class-day-checkbox day-pill-checkbox">
+                <label for="day-mon" class="day-pill-label">Mon</label>
+
+                <input type="checkbox" id="day-tue" value="2" class="class-day-checkbox day-pill-checkbox">
+                <label for="day-tue" class="day-pill-label">Tue</label>
+
+                <input type="checkbox" id="day-wed" value="3" class="class-day-checkbox day-pill-checkbox">
+                <label for="day-wed" class="day-pill-label">Wed</label>
+
+                <input type="checkbox" id="day-thu" value="4" class="class-day-checkbox day-pill-checkbox">
+                <label for="day-thu" class="day-pill-label">Thu</label>
+
+                <input type="checkbox" id="day-fri" value="5" class="class-day-checkbox day-pill-checkbox">
+                <label for="day-fri" class="day-pill-label">Fri</label>
+
+                <input type="checkbox" id="day-sat" value="6" class="class-day-checkbox day-pill-checkbox">
+                <label for="day-sat" class="day-pill-label">Sat</label>
+              </div>
+              <p class="form-hint">A class that meets at different times on different days is entered as separate meetings.</p>
+            </div>
+
+            <!-- Start Time -->
+            <div class="form-group" id="class-start-time-group">
+              <label for="class-start-time" class="form-label">Start Time</label>
+              <input type="time" id="class-start-time" class="form-input" value="09:00">
+            </div>
+
+            <!-- End Time -->
+            <div class="form-group" id="class-end-time-group">
+              <label for="class-end-time" class="form-label">End Time</label>
+              <input type="time" id="class-end-time" class="form-input" value="10:15">
+            </div>
+
+            <!-- Location or Notes -->
+            <div class="form-group form-group-full">
+              <label for="class-location" class="form-label">Location or notes (optional)</label>
+              <input type="text" id="class-location" class="form-input" placeholder="e.g. Chapel Hall 102 or Attend 15 of 30 services">
+            </div>
+          </div>
+        </div>
+
+        <!-- Dialog Footer Actions -->
+        <div class="dialog-footer">
+          <button type="button" class="btn-secondary" id="class-form-cancel-btn">Cancel</button>
+          <button type="button" class="btn-secondary" id="class-form-save-another-btn">Save and add another</button>
+          <button type="submit" class="btn-primary" id="class-form-submit-btn">Save</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
   <!-- Hidden file input for Backup Import -->
   <input type="file" id="import-file-input" accept=".json" style="display: none;">
 
-  <!-- Scripts: Sample Data, Storage, Calendar, and App Logic -->
+  <!-- Scripts: Sample Data, Storage, Calendar, Schedule, and App Logic -->
   <script src="data/assignments.js"></script>
   <script src="storage.js"></script>
   <script src="calendar.js"></script>
+  <script src="schedule.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

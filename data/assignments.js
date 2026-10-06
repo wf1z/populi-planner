@@ -159,3 +159,51 @@ window.getFreshSampleAssignments = function () {
     }
   ];
 };
+
+// Builds fresh sample class meetings for the sample courses.
+window.getFreshSampleClasses = function () {
+  return [
+    {
+      id: "sample-class-1",
+      courseCode: "THEO 201",
+      courseName: "Systematic Theology I",
+      days: [1, 3, 5], // Monday, Wednesday, Friday
+      startTime: "09:00",
+      endTime: "10:15",
+      location: "Chapel Hall 102",
+      source: "sample"
+    },
+    {
+      id: "sample-class-2",
+      courseCode: "BIBL 110",
+      courseName: "Old Testament Survey",
+      days: [2, 4], // Tuesday, Thursday
+      startTime: "10:30",
+      endTime: "11:45",
+      location: "Academic Center 204",
+      source: "sample"
+    },
+    {
+      id: "sample-class-3",
+      courseCode: "MIN 305",
+      courseName: "Pastoral Ministry & Leadership",
+      days: [1, 3], // Monday, Wednesday (overlaps with THEO 201 from 10:00 to 10:15)
+      startTime: "10:00",
+      endTime: "11:15",
+      location: "Ministry Wing 105",
+      source: "sample",
+      unscheduled: false
+    },
+    {
+      id: "sample-class-chapel",
+      courseCode: "CHAP 100",
+      courseName: "College Chapel",
+      days: [],
+      startTime: null,
+      endTime: null,
+      location: "Attend 15 of 30 services per semester",
+      source: "sample",
+      unscheduled: true
+    }
+  ];
+};
