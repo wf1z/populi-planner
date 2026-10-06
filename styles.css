@@ -1,0 +1,278 @@
+/* ==========================================================================
+   THEME SETTINGS & VARIABLES (Customize colors, fonts, and spacing here)
+   Tip: change ONE variable at a time, save, and refresh to see the effect.
+   ========================================================================== */
+:root {
+  color-scheme: dark; /* makes dropdowns and checkboxes dark too */
+
+  /* Page Colors */
+  --bg-color: #0f0d12;
+  --card-bg: #1a1720;
+  --card-border: #2e2937;
+  --input-bg: #221e29;
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+
+  /* Text Colors */
+  --text-main: #ffffff;
+  --text-muted: #d4cdd9;
+  --text-dim: #9a92a3;
+
+  /* Accent & Action Colors (silvery pink) */
+  --primary: #e0b8c8;
+  --primary-hover: #efcfdc;
+
+  /* Course Tag Colors */
+  --course-tag-bg: rgba(224, 184, 200, 0.12);
+  --course-tag-text: #e8c4d2;
+  --course-tag-border: rgba(224, 184, 200, 0.3);
+
+  /* Badges */
+  --badge-new-bg: #0f2a22;
+  --badge-new-text: #6ee7b7;
+  --badge-new-border: #1f5c46;
+
+  --badge-changed-bg: #2a2210;
+  --badge-changed-text: #fcd34d;
+  --badge-changed-border: #5c4a14;
+
+  /* Planned (Checked off) Card State */
+  --planned-opacity: 0.5;
+  --planned-card-bg: #141218;
+
+  /* Fonts & Sizing */
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-full: 9999px;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 36px;
+}
+
+/* ==========================================================================
+   BASE & RESET STYLES
+   ========================================================================== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  line-height: 1.5;
+  padding: var(--space-lg) var(--space-md);
+}
+
+.container {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+/* ==========================================================================
+   HEADER & FILTER BAR
+   ========================================================================== */
+header {
+  margin-bottom: var(--space-xl);
+}
+
+.app-title {
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+}
+
+.app-subtitle {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin-top: var(--space-xs);
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+  padding: var(--space-md);
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--card-shadow);
+}
+
+.filter-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.filter-select {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--card-border);
+  background-color: var(--input-bg); /* was hardcoded white */
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text-main);
+  outline: none;
+  cursor: pointer;
+}
+
+.filter-select:focus {
+  border-color: var(--primary);
+}
+
+/* ==========================================================================
+   SECTIONS & SECTION HEADERS
+   ========================================================================== */
+.section {
+  margin-bottom: var(--space-xl);
+}
+
+.section-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-xs);
+  border-bottom: 2px solid var(--primary); /* silvery pink line under each section */
+}
+
+.section-count {
+  font-size: 0.8rem;
+  background-color: var(--card-border);
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+}
+
+.cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.empty-message {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: var(--space-md);
+  background-color: var(--card-bg);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--card-border);
+  text-align: center;
+}
+
+/* ==========================================================================
+   ASSIGNMENT CARD
+   ========================================================================== */
+.assignment-card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--card-shadow);
+  padding: var(--space-md);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+/* Planned Checkbox Styling */
+.card-checkbox-wrapper {
+  padding-top: 3px;
+}
+
+.planned-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+.card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Badges and Course Tag Bar */
+.card-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
+.course-tag {
+  font-size: 0.75rem;
+  font-weight: 700;
+  background-color: var(--course-tag-bg);
+  color: var(--course-tag-text);
+  border: 1px solid var(--course-tag-border);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-new {
+  background-color: var(--badge-new-bg);
+  color: var(--badge-new-text);
+  border: 1px solid var(--badge-new-border);
+}
+
+.badge-changed {
+  background-color: var(--badge-changed-bg);
+  color: var(--badge-changed-text);
+  border: 1px solid var(--badge-changed-border);
+}
+
+/* Title & Due Date */
+.card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 2px;
+}
+
+.card-due-date {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.card-due-date strong {
+  color: var(--text-main);
+}
+
+/* Planned State (Checked off) */
+.assignment-card.is-planned {
+  background-color: var(--planned-card-bg);
+  opacity: var(--planned-opacity);
+}
+
+.assignment-card.is-planned .card-title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}

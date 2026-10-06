@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Populi Planner</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+
+    <!-- Header & App Intro -->
+    <header>
+      <h1 class="app-title">Populi Planner</h1>
+      <p class="app-subtitle">At-a-glance coursework tracking: see what's due, what was just posted, and what changed.</p>
+
+      <!-- Filter by Course -->
+      <div class="filter-bar">
+        <label for="course-filter" class="filter-label">Filter by Course:</label>
+        <select id="course-filter" class="filter-select">
+          <option value="all">All Courses</option>
+        </select>
+      </div>
+    </header>
+
+    <!-- Main Content: Three Sections -->
+    <main>
+      <!-- Section 1: Today -->
+      <section class="section" id="section-today">
+        <h2 class="section-title">
+          Today
+          <span class="section-count" id="count-today">0</span>
+        </h2>
+        <div class="cards-container" id="cards-today"></div>
+      </section>
+
+      <!-- Section 2: This Week -->
+      <section class="section" id="section-this-week">
+        <h2 class="section-title">
+          This Week
+          <span class="section-count" id="count-this-week">0</span>
+        </h2>
+        <div class="cards-container" id="cards-this-week"></div>
+      </section>
+
+      <!-- Section 3: Later -->
+      <section class="section" id="section-later">
+        <h2 class="section-title">
+          Later
+          <span class="section-count" id="count-later">0</span>
+        </h2>
+        <div class="cards-container" id="cards-later"></div>
+      </section>
+    </main>
+
+  </div>
+
+  <!-- Load Data First, Then Application Logic -->
+  <script src="data/assignments.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
