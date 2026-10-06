@@ -1,76 +1,62 @@
-// Key used to store planned assignment IDs in the browser's localStorage.
-const LOCAL_STORAGE_KEY = "populi_planned_assignments";
+// Three days duration in milliseconds for badge expiration.
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
-// Returns a Date object shifted by a specific number of days relative to today.
-function getRelativeDate(daysOffset) {
-  const date = new Date();
-  date.setDate(date.getDate() + daysOffset);
-  return date;
+// Currently editing assignment ID, or null when in Add mode.
+let currentEditingId = null;
+
+// Parses a "YYYY-MM-DD" string into a local Date at midnight.
+function parseLocalDate(dateString) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
-// Formats a Date object into a readable string like "Oct 5".
-function formatDate(date) {
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+// Formats a "YYYY-MM-DD" string into a human-friendly string like "Oct 5".
+function formatDisplayDate(dateString) {
+  const localDate = parseLocalDate(dateString);
+  return localDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// Reads the list of saved "planned" assignment IDs from localStorage.
-function getPlannedIds() {
-  const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-  return saved ? JSON.parse(saved) : [];
+// Calculates the whole number of calendar days between today and the target date.
+function getDaysOffsetFromToday(dateString) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const targetDate = parseLocalDate(dateString);
+  targetDate.setHours(0, 0, 0, 0);
+
+  const diffMs = targetDate.getTime() - today.getTime();
+  return Math.round(diffMs / (1000 * 60 * 60 * 24));
 }
 
-// Saves the list of "planned" assignment IDs to localStorage.
-function savePlannedIds(plannedIds) {
-  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(plannedIds));
-}
+// Generates the badge element for New or Changed status based on timestamps.
+function createBadgeElement(assignment) {
+  const now = Date.now();
 
-// Toggles an assignment's planned status and updates both storage and the card display.
-function togglePlannedStatus(assignmentId, isChecked) {
-  const plannedIds = getPlannedIds();
-  const idIndex = plannedIds.indexOf(assignmentId);
-
-  if (isChecked && idIndex === -1) {
-    plannedIds.push(assignmentId);
-  } else if (!isChecked && idIndex !== -1) {
-    plannedIds.splice(idIndex, 1);
+  // Changed badge check (3 days window)
+  if (assignment.lastChanged && assignment.previousDueDate && (now - assignment.lastChanged <= THREE_DAYS_MS)) {
+    const badge = document.createElement("span");
+    badge.className = "badge badge-changed";
+    const oldFormatted = formatDisplayDate(assignment.previousDueDate);
+    const newFormatted = formatDisplayDate(assignment.dueDate);
+    badge.textContent = `Due date changed (Was ${oldFormatted} → now ${newFormatted})`;
+    return badge;
   }
 
-  savePlannedIds(plannedIds);
-
-  const cardElement = document.getElementById(`card-${assignmentId}`);
-  if (cardElement) {
-    cardElement.classList.toggle("is-planned", isChecked);
-  }
-}
-
-// Creates the HTML element for an assignment badge (New or Due date changed).
-function createBadgeElement(assignment, dueDateFormatted) {
-  if (assignment.status === "new") {
+  // New badge check (3 days window)
+  if (assignment.firstSeen && (now - assignment.firstSeen <= THREE_DAYS_MS)) {
     const badge = document.createElement("span");
     badge.className = "badge badge-new";
     badge.textContent = "New";
     return badge;
   }
 
-  if (assignment.status === "changed" && assignment.previousDueDaysOffset !== null) {
-    const prevDate = getRelativeDate(assignment.previousDueDaysOffset);
-    const prevFormatted = formatDate(prevDate);
-    const badge = document.createElement("span");
-    badge.className = "badge badge-changed";
-    badge.textContent = `Due date changed (Was ${prevFormatted} → now ${dueDateFormatted})`;
-    return badge;
-  }
-
   return null;
 }
 
-// Builds a single assignment card element with course tag, title, due date, badge, and checkbox.
-function createAssignmentCard(assignment, isPlanned) {
-  const dueDate = getRelativeDate(assignment.dueDaysOffset);
-  const dueDateFormatted = formatDate(dueDate);
-
+// Builds a safe assignment card element using textContent to prevent HTML injection.
+function createAssignmentCard(assignment) {
   const card = document.createElement("article");
-  card.className = `assignment-card ${isPlanned ? "is-planned" : ""}`;
+  card.className = `assignment-card ${assignment.planned ? "is-planned" : ""}`;
   card.id = `card-${assignment.id}`;
 
   // Checkbox wrapper
@@ -80,63 +66,91 @@ function createAssignmentCard(assignment, isPlanned) {
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
   checkbox.className = "planned-checkbox";
-  checkbox.id = `check-${assignment.id}`;
-  checkbox.checked = isPlanned;
+  checkbox.checked = Boolean(assignment.planned);
   checkbox.title = "Mark as planned";
   checkbox.addEventListener("change", function () {
-    togglePlannedStatus(assignment.id, checkbox.checked);
+    toggleAssignmentPlanned(assignment.id);
+    card.classList.toggle("is-planned", checkbox.checked);
   });
-
   checkboxWrapper.appendChild(checkbox);
 
-  // Main content container
-  const mainContent = document.createElement("div");
-  mainContent.className = "card-main";
+  // Main card content
+  const cardMain = document.createElement("div");
+  cardMain.className = "card-main";
 
-  // Card header (Course tag + optional badge)
+  // Card header (Course tag, Badges, and Action buttons)
   const header = document.createElement("div");
   header.className = "card-header";
 
   const courseTag = document.createElement("span");
   courseTag.className = "course-tag";
   courseTag.textContent = assignment.courseCode;
-  courseTag.title = assignment.courseName;
+  courseTag.title = assignment.courseName || assignment.courseCode;
   header.appendChild(courseTag);
 
-  const badgeElement = createBadgeElement(assignment, dueDateFormatted);
+  const badgeElement = createBadgeElement(assignment);
   if (badgeElement) {
     header.appendChild(badgeElement);
   }
 
-  // Title
-  const title = document.createElement("h3");
-  title.className = "card-title";
-  title.textContent = assignment.title;
+  // Card Action Buttons (Edit and Delete)
+  const actionWrapper = document.createElement("div");
+  actionWrapper.className = "card-actions";
 
-  // Due Date
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "btn-card-action";
+  editBtn.textContent = "Edit";
+  editBtn.addEventListener("click", function () {
+    startEditingAssignment(assignment);
+  });
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "btn-card-action btn-card-delete";
+  deleteBtn.textContent = "Delete";
+  deleteBtn.addEventListener("click", function () {
+    if (confirm(`Are you sure you want to delete "${assignment.title}"?`)) {
+      deleteAssignment(assignment.id);
+      renderApp();
+    }
+  });
+
+  actionWrapper.appendChild(editBtn);
+  actionWrapper.appendChild(deleteBtn);
+  header.appendChild(actionWrapper);
+
+  // Title (rendered safely with textContent)
+  const titleEl = document.createElement("h3");
+  titleEl.className = "card-title";
+  titleEl.textContent = assignment.title;
+
+  // Due Date & Course details (rendered safely with textContent)
   const dueInfo = document.createElement("p");
   dueInfo.className = "card-due-date";
-  dueInfo.innerHTML = `Due: <strong>${dueDateFormatted}</strong> &bull; ${assignment.courseName}`;
+  const formattedDueDate = formatDisplayDate(assignment.dueDate);
+  const courseFullName = assignment.courseName ? ` • ${assignment.courseName}` : "";
+  dueInfo.textContent = `Due: ${formattedDueDate}${courseFullName}`;
 
-  mainContent.appendChild(header);
-  mainContent.appendChild(title);
-  mainContent.appendChild(dueInfo);
+  cardMain.appendChild(header);
+  cardMain.appendChild(titleEl);
+  cardMain.appendChild(dueInfo);
 
   card.appendChild(checkboxWrapper);
-  card.appendChild(mainContent);
+  card.appendChild(cardMain);
 
   return card;
 }
 
-// Fills a section container with cards or displays a friendly empty message if none exist.
-function renderSection(containerId, countId, assignmentsList, plannedIds) {
+// Populates a section with sorted cards or displays an empty notice.
+function renderSection(containerId, countId, itemsList) {
   const container = document.getElementById(containerId);
   const countBadge = document.getElementById(countId);
 
   container.innerHTML = "";
-  countBadge.textContent = assignmentsList.length;
+  countBadge.textContent = itemsList.length;
 
-  if (assignmentsList.length === 0) {
+  if (itemsList.length === 0) {
     const emptyMsg = document.createElement("div");
     emptyMsg.className = "empty-message";
     emptyMsg.textContent = "No assignments in this section.";
@@ -144,70 +158,303 @@ function renderSection(containerId, countId, assignmentsList, plannedIds) {
     return;
   }
 
-  assignmentsList.forEach(function (assignment) {
-    const isPlanned = plannedIds.includes(assignment.id);
-    const card = createAssignmentCard(assignment, isPlanned);
+  itemsList.forEach(function (assignment) {
+    const card = createAssignmentCard(assignment);
     container.appendChild(card);
   });
 }
 
-// Extracts unique course codes from the dataset to populate the filter dropdown.
-function setupCourseFilter(assignments) {
-  const filterSelect = document.getElementById("course-filter");
-  const uniqueCourses = [];
+// Updates both the filter dropdown and the form course select with unique courses.
+function syncCourseDropdowns(assignments) {
+  const courseFilter = document.getElementById("course-filter");
+  const formCourseSelect = document.getElementById("form-course");
 
-  assignments.forEach(function (item) {
-    if (!uniqueCourses.includes(item.courseCode)) {
-      uniqueCourses.push(item.courseCode);
+  const currentFilterValue = courseFilter.value;
+  const currentFormValue = formCourseSelect.value;
+
+  // Collect unique courses mapped by courseCode
+  const courseMap = new Map();
+  assignments.forEach(item => {
+    if (item.courseCode && !courseMap.has(item.courseCode)) {
+      courseMap.set(item.courseCode, item.courseName || item.courseCode);
     }
   });
 
-  uniqueCourses.forEach(function (code) {
-    const option = document.createElement("option");
-    option.value = code;
-    option.textContent = code;
-    filterSelect.appendChild(option);
+  // Rebuild course filter dropdown
+  courseFilter.innerHTML = '<option value="all">All Courses</option>';
+  courseMap.forEach((name, code) => {
+    const opt = document.createElement("option");
+    opt.value = code;
+    opt.textContent = code;
+    courseFilter.appendChild(opt);
+  });
+  if (courseMap.has(currentFilterValue)) {
+    courseFilter.value = currentFilterValue;
+  } else {
+    courseFilter.value = "all";
+  }
+
+  // Rebuild form course dropdown
+  formCourseSelect.innerHTML = "";
+  courseMap.forEach((name, code) => {
+    const opt = document.createElement("option");
+    opt.value = code;
+    opt.textContent = `${code} - ${name}`;
+    formCourseSelect.appendChild(opt);
   });
 
-  filterSelect.addEventListener("change", function () {
-    renderApp();
-  });
+  const addCustomOption = document.createElement("option");
+  addCustomOption.value = "__NEW__";
+  addCustomOption.textContent = "+ Add New Course...";
+  formCourseSelect.appendChild(addCustomOption);
+
+  if (currentFormValue && (courseMap.has(currentFormValue) || currentFormValue === "__NEW__")) {
+    formCourseSelect.value = currentFormValue;
+  } else if (courseMap.size > 0) {
+    formCourseSelect.selectedIndex = 0;
+  } else {
+    formCourseSelect.value = "__NEW__";
+  }
+
+  updateNewCourseVisibility();
 }
 
-// Categorizes assignments into Today, This Week, and Later, then renders each section.
-function renderApp() {
-  const allAssignments = window.ASSIGNMENTS_DATA || [];
-  const selectedCourse = document.getElementById("course-filter").value;
-  const plannedIds = getPlannedIds();
+// Shows or hides the custom course input fields based on course selector choice.
+function updateNewCourseVisibility() {
+  const formCourseSelect = document.getElementById("form-course");
+  const newCourseFields = document.getElementById("new-course-fields");
+  const isCustom = formCourseSelect.value === "__NEW__";
+  newCourseFields.style.display = isCustom ? "grid" : "none";
+}
 
-  // Filter by selected course
-  const filtered = allAssignments.filter(function (item) {
+// Puts the form into Edit mode and fills in existing assignment details.
+function startEditingAssignment(assignment) {
+  currentEditingId = assignment.id;
+
+  document.getElementById("form-heading").textContent = "Edit Assignment";
+  document.getElementById("form-submit-btn").textContent = "Update Assignment";
+  document.getElementById("form-cancel-btn").style.display = "inline-block";
+
+  // Hide the 'New' checkbox and show the 'Mark due date changed' checkbox
+  document.getElementById("form-new-checkbox-row").style.display = "none";
+  document.getElementById("form-changed-checkbox-row").style.display = "flex";
+  document.getElementById("form-mark-changed").checked = true;
+
+  // Fill in form inputs
+  document.getElementById("form-title").value = assignment.title;
+  document.getElementById("form-due-date").value = assignment.dueDate;
+
+  const formCourseSelect = document.getElementById("form-course");
+  let found = false;
+  for (let i = 0; i < formCourseSelect.options.length; i++) {
+    if (formCourseSelect.options[i].value === assignment.courseCode) {
+      formCourseSelect.selectedIndex = i;
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    formCourseSelect.value = "__NEW__";
+    document.getElementById("new-course-code").value = assignment.courseCode;
+    document.getElementById("new-course-name").value = assignment.courseName || "";
+  }
+  updateNewCourseVisibility();
+
+  // Scroll to form smoothly
+  document.querySelector(".form-card").scrollIntoView({ behavior: "smooth" });
+}
+
+// Resets the assignment form back to clean Add mode.
+function resetAssignmentForm() {
+  currentEditingId = null;
+  document.getElementById("form-heading").textContent = "Add Assignment";
+  document.getElementById("form-submit-btn").textContent = "Add Assignment";
+  document.getElementById("form-cancel-btn").style.display = "none";
+
+  document.getElementById("form-new-checkbox-row").style.display = "flex";
+  document.getElementById("form-changed-checkbox-row").style.display = "none";
+  document.getElementById("form-just-posted").checked = false;
+
+  document.getElementById("assignment-form").reset();
+  updateNewCourseVisibility();
+}
+
+// Handles form submission for both adding new and updating existing assignments.
+function handleFormSubmit(event) {
+  event.preventDefault();
+
+  const title = document.getElementById("form-title").value.trim();
+  const dueDate = document.getElementById("form-due-date").value;
+  const courseSelectValue = document.getElementById("form-course").value;
+
+  let courseCode = "";
+  let courseName = "";
+
+  if (courseSelectValue === "__NEW__") {
+    courseCode = document.getElementById("new-course-code").value.trim();
+    courseName = document.getElementById("new-course-name").value.trim() || courseCode;
+    if (!courseCode) {
+      alert("Please enter a course code.");
+      return;
+    }
+  } else {
+    courseCode = courseSelectValue;
+    const assignments = getStoredAssignments();
+    const match = assignments.find(item => item.courseCode === courseCode);
+    courseName = match ? (match.courseName || courseCode) : courseCode;
+  }
+
+  if (!title || !dueDate) {
+    alert("Please fill in both a title and due date.");
+    return;
+  }
+
+  if (currentEditingId) {
+    // Update existing assignment
+    const markDueDateChanged = document.getElementById("form-mark-changed").checked;
+    updateAssignment(currentEditingId, { courseCode, courseName, title, dueDate }, markDueDateChanged);
+  } else {
+    // Add new assignment
+    const isJustPosted = document.getElementById("form-just-posted").checked;
+    addAssignment({ courseCode, courseName, title, dueDate, isJustPosted });
+  }
+
+  resetAssignmentForm();
+  renderApp();
+}
+
+// Renders all assignment sections sorted by due date and filtered by chosen course.
+function renderApp() {
+  const allAssignments = getStoredAssignments();
+  const selectedCourse = document.getElementById("course-filter").value;
+  const welcomeBox = document.getElementById("welcome-empty-state");
+
+  syncCourseDropdowns(allAssignments);
+
+  // Show welcome state if no assignments exist at all
+  if (allAssignments.length === 0) {
+    welcomeBox.style.display = "block";
+  } else {
+    welcomeBox.style.display = "none";
+  }
+
+  // Filter items by course filter
+  const filtered = allAssignments.filter(item => {
     return selectedCourse === "all" || item.courseCode === selectedCourse;
   });
 
-  // Categorize into the three time buckets
-  const todayItems = [];
-  const thisWeekItems = [];
-  const laterItems = [];
+  // Buckets
+  const overdueList = [];
+  const todayList = [];
+  const thisWeekList = [];
+  const laterList = [];
 
-  filtered.forEach(function (item) {
-    if (item.dueDaysOffset === 0) {
-      todayItems.push(item);
-    } else if (item.dueDaysOffset > 0 && item.dueDaysOffset <= 7) {
-      thisWeekItems.push(item);
+  filtered.forEach(item => {
+    const daysOffset = getDaysOffsetFromToday(item.dueDate);
+    if (daysOffset < 0) {
+      overdueList.push(item);
+    } else if (daysOffset === 0) {
+      todayList.push(item);
+    } else if (daysOffset >= 1 && daysOffset <= 7) {
+      thisWeekList.push(item);
     } else {
-      laterItems.push(item);
+      laterList.push(item);
     }
   });
 
-  renderSection("cards-today", "count-today", todayItems, plannedIds);
-  renderSection("cards-this-week", "count-this-week", thisWeekItems, plannedIds);
-  renderSection("cards-later", "count-later", laterItems, plannedIds);
+  // Sort each list soonest first by due date
+  const dateSorter = (a, b) => {
+    if (a.dueDate !== b.dueDate) {
+      return a.dueDate.localeCompare(b.dueDate);
+    }
+    return a.title.localeCompare(b.title);
+  };
+
+  overdueList.sort(dateSorter);
+  todayList.sort(dateSorter);
+  thisWeekList.sort(dateSorter);
+  laterList.sort(dateSorter);
+
+  // Toggle Overdue section visibility (only display when overdue items exist)
+  const overdueSection = document.getElementById("section-overdue");
+  if (overdueList.length > 0) {
+    overdueSection.style.display = "block";
+    renderSection("cards-overdue", "count-overdue", overdueList);
+  } else {
+    overdueSection.style.display = "none";
+  }
+
+  renderSection("cards-today", "count-today", todayList);
+  renderSection("cards-this-week", "count-this-week", thisWeekList);
+  renderSection("cards-later", "count-later", laterList);
 }
 
-// Initializes the app after the DOM has loaded.
+// Connects toolbar and form event listeners and initiates first render.
 document.addEventListener("DOMContentLoaded", function () {
-  const assignments = window.ASSIGNMENTS_DATA || [];
-  setupCourseFilter(assignments);
+  // Form submission & cancel
+  document.getElementById("assignment-form").addEventListener("submit", handleFormSubmit);
+  document.getElementById("form-cancel-btn").addEventListener("click", resetAssignmentForm);
+  document.getElementById("form-course").addEventListener("change", updateNewCourseVisibility);
+
+  // Filter change
+  document.getElementById("course-filter").addEventListener("change", renderApp);
+
+  // Toolbar: Load Sample Data
+  document.getElementById("btn-load-sample").addEventListener("click", function () {
+    const existing = getStoredAssignments();
+    if (existing.length > 0) {
+      if (!confirm("Loading sample data will replace your current assignments. Continue?")) {
+        return;
+      }
+    }
+    const freshSamples = window.getFreshSampleAssignments ? window.getFreshSampleAssignments() : [];
+    saveStoredAssignments(freshSamples);
+    renderApp();
+  });
+
+  // Toolbar: Clear All Data
+  document.getElementById("btn-clear-all").addEventListener("click", function () {
+    if (confirm("Are you sure you want to clear ALL assignments? This cannot be undone.")) {
+      clearAllAssignments();
+      resetAssignmentForm();
+      renderApp();
+    }
+  });
+
+  // Toolbar: Export Backup
+  document.getElementById("btn-export").addEventListener("click", function () {
+    exportBackup();
+  });
+
+  // Toolbar: Import Backup
+  const fileInput = document.getElementById("import-file-input");
+  document.getElementById("btn-import").addEventListener("click", function () {
+    fileInput.value = "";
+    fileInput.click();
+  });
+
+  fileInput.addEventListener("change", function (event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      const result = validateBackupJSON(e.target.result);
+      if (!result.valid) {
+        alert("Import Failed:\n" + result.error);
+        return;
+      }
+
+      if (confirm(`Valid backup found with ${result.assignments.length} assignments.\n\nImporting this backup will REPLACE all current assignments. Are you sure you want to proceed?`)) {
+        saveStoredAssignments(result.assignments);
+        renderApp();
+        alert("Backup imported successfully!");
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // First initial render
   renderApp();
 });

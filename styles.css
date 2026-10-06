@@ -1,43 +1,47 @@
 /* ==========================================================================
    THEME SETTINGS & VARIABLES (Customize colors, fonts, and spacing here)
-   Tip: change ONE variable at a time, save, and refresh to see the effect.
    ========================================================================== */
 :root {
-  color-scheme: dark; /* makes dropdowns and checkboxes dark too */
-
   /* Page Colors */
-  --bg-color: #0f0d12;
-  --card-bg: #1a1720;
-  --card-border: #2e2937;
-  --input-bg: #221e29;
-  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
-
+  --bg-color: #f8fafc;
+  --card-bg: #ffffff;
+  --card-border: #e2e8f0;
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  
   /* Text Colors */
-  --text-main: #ffffff;
-  --text-muted: #d4cdd9;
-  --text-dim: #9a92a3;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
 
-  /* Accent & Action Colors (silvery pink) */
-  --primary: #e0b8c8;
-  --primary-hover: #efcfdc;
+  /* Accent & Action Colors */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --danger: #dc2626;
+  --danger-hover: #b91c1c;
+  --neutral-btn-bg: #f1f5f9;
+  --neutral-btn-hover: #e2e8f0;
 
   /* Course Tag Colors */
-  --course-tag-bg: rgba(224, 184, 200, 0.12);
-  --course-tag-text: #e8c4d2;
-  --course-tag-border: rgba(224, 184, 200, 0.3);
+  --course-tag-bg: #eff6ff;
+  --course-tag-text: #1d4ed8;
+  --course-tag-border: #bfdbfe;
 
   /* Badges */
-  --badge-new-bg: #0f2a22;
-  --badge-new-text: #6ee7b7;
-  --badge-new-border: #1f5c46;
+  --badge-new-bg: #ecfdf5;
+  --badge-new-text: #047857;
+  --badge-new-border: #a7f3d0;
 
-  --badge-changed-bg: #2a2210;
-  --badge-changed-text: #fcd34d;
-  --badge-changed-border: #5c4a14;
+  --badge-changed-bg: #fffbeb;
+  --badge-changed-text: #b45309;
+  --badge-changed-border: #fde68a;
+
+  --badge-overdue-bg: #fef2f2;
+  --badge-overdue-text: #b91c1c;
+  --badge-overdue-border: #fecaca;
 
   /* Planned (Checked off) Card State */
-  --planned-opacity: 0.5;
-  --planned-card-bg: #141218;
+  --planned-opacity: 0.55;
+  --planned-card-bg: #f8fafc;
 
   /* Fonts & Sizing */
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -76,10 +80,18 @@ body {
 }
 
 /* ==========================================================================
-   HEADER & FILTER BAR
+   HEADER & DATA TOOLBAR
    ========================================================================== */
 header {
   margin-bottom: var(--space-xl);
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-md);
 }
 
 .app-title {
@@ -95,11 +107,165 @@ header {
   margin-top: var(--space-xs);
 }
 
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+}
+
+.btn-tool {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--card-border);
+  background-color: var(--neutral-btn-bg);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.btn-tool:hover {
+  background-color: var(--neutral-btn-hover);
+}
+
+.btn-tool-danger {
+  color: var(--danger);
+}
+
+.btn-tool-danger:hover {
+  background-color: #fee2e2;
+  border-color: #fca5a5;
+}
+
+/* ==========================================================================
+   ADD / EDIT ASSIGNMENT FORM
+   ========================================================================== */
+.form-card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--card-shadow);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.form-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.form-group-full {
+  grid-column: 1 / -1;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: var(--space-xs);
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--card-border);
+  background-color: #ffffff;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text-main);
+  outline: none;
+}
+
+.form-input:focus,
+.form-select:focus {
+  border-color: var(--primary);
+}
+
+.new-course-box {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  background-color: var(--bg-color);
+  border: 1px dashed var(--card-border);
+  border-radius: var(--radius-sm);
+  margin-top: var(--space-xs);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  font-size: 0.88rem;
+  color: var(--text-main);
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.btn-primary {
+  padding: 8px 18px;
+  background-color: var(--primary);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+}
+
+.btn-cancel {
+  padding: 8px 14px;
+  background-color: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-cancel:hover {
+  background-color: var(--neutral-btn-bg);
+}
+
+/* ==========================================================================
+   FILTER BAR
+   ========================================================================== */
 .filter-bar {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  margin-top: var(--space-lg);
+  margin-bottom: var(--space-xl);
   padding: var(--space-md);
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
@@ -117,7 +283,7 @@ header {
   padding: 6px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--card-border);
-  background-color: var(--input-bg); /* was hardcoded white */
+  background-color: #fff;
   font-family: inherit;
   font-size: 0.9rem;
   color: var(--text-main);
@@ -130,7 +296,7 @@ header {
 }
 
 /* ==========================================================================
-   SECTIONS & SECTION HEADERS
+   SECTIONS & SECTIONS HEADERS
    ========================================================================== */
 .section {
   margin-bottom: var(--space-xl);
@@ -139,13 +305,12 @@ header {
 .section-title {
   font-size: 1.2rem;
   font-weight: 700;
-  color: var(--text-main);
   display: flex;
   align-items: center;
   gap: var(--space-sm);
   margin-bottom: var(--space-md);
   padding-bottom: var(--space-xs);
-  border-bottom: 2px solid var(--primary); /* silvery pink line under each section */
+  border-bottom: 2px solid var(--card-border);
 }
 
 .section-count {
@@ -155,6 +320,17 @@ header {
   padding: 2px 8px;
   border-radius: var(--radius-full);
   font-weight: 600;
+}
+
+.section-overdue .section-title {
+  color: var(--danger);
+  border-bottom-color: var(--badge-overdue-border);
+}
+
+.section-overdue .section-count {
+  background-color: var(--badge-overdue-bg);
+  color: var(--danger);
+  border: 1px solid var(--badge-overdue-border);
 }
 
 .cards-container {
@@ -189,7 +365,6 @@ header {
   transition: opacity 0.2s ease, background-color 0.2s ease;
 }
 
-/* Planned Checkbox Styling */
 .card-checkbox-wrapper {
   padding-top: 3px;
 }
@@ -206,7 +381,6 @@ header {
   min-width: 0;
 }
 
-/* Badges and Course Tag Bar */
 .card-header {
   display: flex;
   align-items: center;
@@ -249,12 +423,18 @@ header {
   border: 1px solid var(--badge-changed-border);
 }
 
-/* Title & Due Date */
+.badge-overdue {
+  background-color: var(--badge-overdue-bg);
+  color: var(--badge-overdue-text);
+  border: 1px solid var(--badge-overdue-border);
+}
+
 .card-title {
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-main);
   margin-bottom: 2px;
+  word-break: break-word;
 }
 
 .card-due-date {
@@ -266,6 +446,37 @@ header {
   color: var(--text-main);
 }
 
+/* Card Action Buttons (Edit / Delete) */
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-left: auto;
+}
+
+.btn-card-action {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: var(--neutral-btn-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-card-action:hover {
+  background-color: var(--neutral-btn-hover);
+  color: var(--text-main);
+}
+
+.btn-card-delete:hover {
+  background-color: #fee2e2;
+  border-color: #fca5a5;
+  color: var(--danger);
+}
+
 /* Planned State (Checked off) */
 .assignment-card.is-planned {
   background-color: var(--planned-card-bg);
@@ -275,4 +486,39 @@ header {
 .assignment-card.is-planned .card-title {
   text-decoration: line-through;
   color: var(--text-muted);
+}
+
+/* Empty State Box */
+.welcome-empty-state {
+  text-align: center;
+  padding: var(--space-xl) var(--space-md);
+  background-color: var(--card-bg);
+  border: 1px dashed var(--card-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-xl);
+}
+
+.welcome-empty-state h3 {
+  font-size: 1.15rem;
+  color: var(--text-main);
+  margin-bottom: var(--space-xs);
+}
+
+.welcome-empty-state p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-md);
+}
+
+/* Responsive Layout */
+@media (max-width: 600px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .new-course-box {
+    grid-template-columns: 1fr;
+  }
+  .header-top {
+    flex-direction: column;
+  }
 }
