@@ -407,32 +407,53 @@ function handleSaveAndAddAnother() {
   renderApp();
 }
 
-// Switches between the Planner and Schedule tabs and toggles views and action buttons.
+// Switches between the Planner, Schedule, and Courses tabs and toggles views and action buttons.
 function switchTab(tabName) {
   currentActiveTab = tabName;
 
   const plannerTab = document.getElementById("tab-btn-planner");
   const scheduleTab = document.getElementById("tab-btn-schedule");
+  const coursesTab = document.getElementById("tab-btn-courses");
+
   const plannerPanel = document.getElementById("panel-planner");
   const schedulePanel = document.getElementById("panel-schedule");
+  const coursesPanel = document.getElementById("panel-courses");
+
   const topActionBtn = document.getElementById("top-action-btn");
 
   if (tabName === "planner") {
-    plannerTab.setAttribute("aria-selected", "true");
-    scheduleTab.setAttribute("aria-selected", "false");
-    plannerPanel.style.display = "block";
-    schedulePanel.style.display = "none";
+    if (plannerTab) plannerTab.setAttribute("aria-selected", "true");
+    if (scheduleTab) scheduleTab.setAttribute("aria-selected", "false");
+    if (coursesTab) coursesTab.setAttribute("aria-selected", "false");
+
+    if (plannerPanel) plannerPanel.style.display = "block";
+    if (schedulePanel) schedulePanel.style.display = "none";
+    if (coursesPanel) coursesPanel.style.display = "none";
 
     topActionBtn.style.display = "inline-block";
     topActionBtn.textContent = "+ Add assignment";
-  } else {
-    plannerTab.setAttribute("aria-selected", "false");
-    scheduleTab.setAttribute("aria-selected", "true");
-    plannerPanel.style.display = "none";
-    schedulePanel.style.display = "block";
+  } else if (tabName === "schedule") {
+    if (plannerTab) plannerTab.setAttribute("aria-selected", "false");
+    if (scheduleTab) scheduleTab.setAttribute("aria-selected", "true");
+    if (coursesTab) coursesTab.setAttribute("aria-selected", "false");
+
+    if (plannerPanel) plannerPanel.style.display = "none";
+    if (schedulePanel) schedulePanel.style.display = "block";
+    if (coursesPanel) coursesPanel.style.display = "none";
 
     topActionBtn.style.display = "inline-block";
     topActionBtn.textContent = "+ Add class";
+  } else if (tabName === "courses") {
+    if (plannerTab) plannerTab.setAttribute("aria-selected", "false");
+    if (scheduleTab) scheduleTab.setAttribute("aria-selected", "false");
+    if (coursesTab) coursesTab.setAttribute("aria-selected", "true");
+
+    if (plannerPanel) plannerPanel.style.display = "none";
+    if (schedulePanel) schedulePanel.style.display = "none";
+    if (coursesPanel) coursesPanel.style.display = "block";
+
+    topActionBtn.style.display = "inline-block";
+    topActionBtn.textContent = "+ Add course";
   }
 }
 
@@ -522,6 +543,11 @@ function renderApp() {
     window.renderScheduleTab();
   }
 
+  // Redraw Courses tab (course cards list)
+  if (typeof window.renderCoursesTab === "function") {
+    window.renderCoursesTab();
+  }
+
   // Ensure active tab view is preserved
   switchTab(currentActiveTab);
 
@@ -580,14 +606,19 @@ document.addEventListener("DOMContentLoaded", function () {
   // Tab switching
   document.getElementById("tab-btn-planner").addEventListener("click", () => switchTab("planner"));
   document.getElementById("tab-btn-schedule").addEventListener("click", () => switchTab("schedule"));
+  document.getElementById("tab-btn-courses").addEventListener("click", () => switchTab("courses"));
 
-  // Top action button (+ Add assignment or + Add class)
+  // Top action button (+ Add assignment, + Add class, or + Add course)
   document.getElementById("top-action-btn").addEventListener("click", function () {
     if (currentActiveTab === "planner") {
       openAssignmentDialog("add");
-    } else {
+    } else if (currentActiveTab === "schedule") {
       if (typeof window.openClassDialog === "function") {
         window.openClassDialog("add");
+      }
+    } else if (currentActiveTab === "courses") {
+      if (typeof window.openCourseDialog === "function") {
+        window.openCourseDialog("add");
       }
     }
   });
@@ -710,6 +741,11 @@ document.addEventListener("DOMContentLoaded", function () {
   // Initialize schedule controls (Class dialog controls)
   if (typeof window.initScheduleControls === "function") {
     window.initScheduleControls();
+  }
+
+  // Initialize course controls (Course dialog controls)
+  if (typeof window.initCourseControls === "function") {
+    window.initCourseControls();
   }
 
   // First initial render

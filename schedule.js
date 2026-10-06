@@ -417,6 +417,9 @@ function renderMeetingsList(classes) {
   grid.className = "meetings-grid";
 
   classes.forEach(item => {
+    const card = document.createElement("article");
+    card.className = "meeting-card";
+
     const course = getCourseById(item.courseId);
 
     // Header: Course code tag + color pill

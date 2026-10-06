@@ -1319,6 +1319,126 @@ dialog.modal-dialog::backdrop {
 }
 
 /* ==========================================================================
+   COURSES TAB (STAGE 2)
+   ========================================================================== */
+.courses-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.courses-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-md);
+}
+
+.course-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  box-shadow: var(--card-shadow);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.course-card:hover {
+  border-color: rgba(224, 184, 200, 0.4);
+}
+
+.course-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.course-card-code {
+  font-family: var(--font-family);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--course-tag-text);
+  background: var(--course-tag-bg);
+  border: 1px solid var(--course-tag-border);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: 0.03em;
+}
+
+.course-card-actions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.course-card-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: var(--space-xs) 0 2px 0;
+  line-height: 1.35;
+}
+
+.course-card-summary {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Color Swatch Picker */
+.course-color-picker {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.color-swatch-option {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.color-swatch-radio {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.color-swatch-pill {
+  display: block;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.color-swatch-option:hover .color-swatch-pill {
+  transform: scale(1.1);
+}
+
+.color-swatch-radio:checked + .color-swatch-pill {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+  transform: scale(1.12);
+  box-shadow: 0 0 10px rgba(224, 184, 200, 0.4);
+}
+
+.color-swatch-radio:focus-visible + .color-swatch-pill {
+  outline: 2px solid #ffffff;
+  outline-offset: 5px;
+}
+
+/* ==========================================================================
    RESPONSIVE LAYOUT
    ========================================================================== */
 @media (max-width: 900px) {

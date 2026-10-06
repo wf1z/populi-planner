@@ -1,6 +1,6 @@
-# Populi Planner (Coursework Planner & Weekly Class Schedule)
+# Populi Planner (Coursework Planner, Weekly Class Schedule & Course Manager)
 
-A clean, dark-mode, at-a-glance planner for college students that highlights upcoming coursework, computed **NEW** and **CHANGED** badges, a visual month calendar, an interactive **Weekly Class Schedule**, and a robust **Version 3 Course Data Architecture** supporting course normalization, persistent color allocation, and resilient data migrations.
+A clean, dark-mode, at-a-glance planner for college students that highlights upcoming coursework, computed **NEW** and **CHANGED** badges, a visual month calendar, an interactive **Weekly Class Schedule**, and a dedicated **Courses Tab** with course renaming, recoloring, cascade deletion, and resilient data migrations.
 
 ---
 
@@ -15,91 +15,68 @@ A clean, dark-mode, at-a-glance planner for college students that highlights upc
 
 ---
 
-## ✨ Stage 1: Course Data Architecture & Safe Migration (Version 3)
+## ✨ Features & Architecture
 
-In Stage 1, courses have been upgraded from loose strings copied onto each item into **first-class records**, establishing the clean relational foundation needed for the upcoming Courses tab (Stage 2). The application UI in Stage 1 looks and behaves identically to before, while all data operations now use real course records and references.
+### 1. Sticky Top Bar & Three Navigation Tabs
+- **Sticky & Compact**: Fixed at the top (`height: 56px`), keeping navigation accessible while scrolling.
+- **Persistent Tabs**: Real `<button role="tab">` elements for **Planner**, **Schedule**, and **Courses**. The active tab persists across all additions, edits, deletions, and page redraws.
+- **Contextual Top Action Button**:
+  - On the **Planner** tab: displays `+ Add assignment`.
+  - On the **Schedule** tab: displays `+ Add class`.
+  - On the **Courses** tab: displays `+ Add course`.
+  - Uses high-contrast primary button styling (`--primary` background, `--on-primary` `#1a1720` dark text, `--primary-hover` on hover, visible keyboard focus).
 
-### 1. Distinct Course Records (`populi_courses`)
-- Each course is stored as an independent record in `localStorage` under `populi_courses`:
-  ```json
-  {
-    "id": "course-1728180000000-abc1234",
-    "code": "THEO 201",
-    "name": "Systematic Theology I",
-    "colorNumber": 1,
-    "source": "manual"
-  }
-  ```
-- All assignments (`populi_assignments`) and class meetings (`populi_classes`) now store a `courseId` foreign key instead of duplicate `courseCode` / `courseName` strings.
-- Robust lookup fallback via `getCourseById(courseId)` guarantees that even if a reference were ever missing, the application renders gracefully without crashing or throwing errors.
+### 2. Courses Tab (Stage 2)
+- **Alphabetical Course Grid**: Courses are displayed as clean cards sorted alphabetically by course code (case-insensitive).
+- **Color Accent Indicator**: Each card features a color accent border on the course code tag matching the course's chosen palette color (`--course-color-1` through `--course-color-8`).
+- **Live Summary Badge**:
+  - Displays the count of open (unplanned) assignments: `X open assignment(s)`.
+  - Displays class meeting summary: `Y class meeting(s)` or `No set meeting time` for unscheduled courses (e.g. chapel/online) or `No class meetings`.
+  - Example: `3 open assignments • 2 class meetings` or `1 open assignment • No set meeting time`.
+- **Edit & Delete Actions**:
+  - **Edit**: Opens the Course modal dialog in Edit mode, pre-filled with the course's code, name, and currently selected color.
+  - **Delete**: Warns with the exact count of assignments and class meetings that will be cascade-deleted before asking for confirmation.
+- **Empty State**: Friendly welcome notice when no courses exist, with an `+ Add your first course` button.
 
-### 2. Multi-Tier Color Allocation (Colors 1 through 8)
-- Added `--course-color-7: #614035` (muted terracotta) and `--course-color-8: #3d3b5e` (muted indigo) to `:root` in `styles.css`.
-- Intelligent color allocation (`allocateColorNumber()`):
-  1. Checks colors 1 through 8 and assigns the **first unused color** so adjacent courses receive different tones.
-  2. If all 8 colors are already assigned across courses, it dynamically allocates the **least-used color** to keep palette distribution balanced.
+### 3. Native Course Modal Dialog (`<dialog>`)
+- **Fields**:
+  - **Course Code** (required, e.g. `THEO 201`).
+  - **Course Name** (optional, defaults to the course code if blank, e.g. `Systematic Theology I`).
+  - **Color Picker**: An accessible radio group featuring all 8 muted palette swatches (`--course-color-1` through `--course-color-8`). Selecting a color displays an active outline ring with hover animation.
+- **Validation**:
+  - Course code is required.
+  - Duplicate detection: Prevents creating or renaming to a course code that is already in use by another course (case-insensitive and whitespace-normalized).
+- **Safe Backdrop & Focus Management**:
+  - Modal only closes when *both* `mousedown` and `click` occur on the dialog backdrop itself.
+  - Focus moves into the Course Code field on open and returns to the triggering button on close.
 
-### 3. Bulletproof Migration with Snapshot Recovery
-- **Marker Key (`populi_data_version = "3"`)**:
-  - Migration status is tracked strictly by `populi_data_version`.
-  - The marker is written **LAST**, after every other data write (`courses`, `assignments`, `classes`) succeeds.
-- **Untouched Snapshot (`populi_migration_backup_pre_v3`)**:
-  - Before converting any data, the raw strings from the old storage keys (`populi_assignments`, `populi_classes`, `populi_course_colors`) are saved in an untouched snapshot.
-  - The snapshot is **never overwritten** if it already exists.
-  - If migration was ever interrupted or the version marker is missing, migration re-runs directly from the untouched snapshot—never from half-migrated data.
-- **Brand-New Users**:
-  - A user opening the planner for the first time gets `populi_data_version = "3"` set immediately without creating a snapshot.
-- **Migration Failure Recovery Screen**:
-  - In the event of an unexpected migration error, a clean recovery screen appears with a **"Download my old data"** button that lets the user immediately download a JSON file of their preserved raw pre-migration data.
-- **Clear All Data**:
-  - Empties assignments, classes, and courses, leaving the version marker at `"3"` so migration does not re-trigger on an intentionally cleared app.
+### 4. Cascade Delete & Referential Integrity
+- Deleting a course permanently removes the course record and cleanly cascades deletion to:
+  - All assignments linked to that course.
+  - All class meetings (scheduled and unscheduled) linked to that course.
+- After deletion, `renderApp()` immediately refreshes the Planner, calendar dots, and weekly schedule grid.
 
-### 4. Backup Schema Version 3 & Universal Compatibility
-- **Version 3 Backup Format**:
-  ```json
-  {
-    "version": 3,
-    "exportedAt": "2026-10-06T...",
-    "courses": [
-      {
-        "id": "course-1",
-        "code": "THEO 201",
-        "name": "Systematic Theology I",
-        "colorNumber": 1,
-        "source": "manual"
-      }
-    ],
-    "assignments": [
-      {
-        "id": "assign-1",
-        "courseId": "course-1",
-        "title": "Syllabus Acknowledgement",
-        "dueDate": "2026-10-10",
-        "planned": false,
-        "firstSeen": null,
-        "lastChanged": null,
-        "previousDueDate": null,
-        "source": "manual"
-      }
-    ],
-    "classes": [
-      {
-        "id": "meeting-1",
-        "courseId": "course-1",
-        "days": [1, 3, 5],
-        "startTime": "09:00",
-        "endTime": "10:15",
-        "location": "Chapel Hall 102",
-        "source": "manual",
-        "unscheduled": false
-      }
-    ]
-  }
-  ```
-- **Strict V3 Validation**: Verifies that every `courseId` referenced in `assignments` or `classes` exists in `courses`.
-- **Seamless V1 / V2 Import Support**:
-  - **Version 2 files**: Automatically rebuilt into course records, inheriting colors from the backup's `courseColors` map or matching existing courses, and linking items by `courseId`.
-  - **Version 1 files**: Matches assignments to existing courses by normalized code or creates new courses without deleting existing class schedule records.
+### 5. Weekly Class Schedule (Schedule Tab)
+- **Sunday-to-Saturday Time Grid**: Aligns with the month calendar (Sunday = column 0).
+- **Auto-Fitting Hour Range**: Dynamically fits the earliest start time to the latest end time with 1 hour of padding (defaults to 8:00 AM – 6:00 PM if empty).
+- **Side-by-Side Overlap Layout**: Connected clusters of overlapping class meetings on the same day are divided into equal sub-columns.
+- **Classes with No Set Meeting Time**: Checkbox in class dialog hides day/time fields for flexible courses (chapel, online, practicum). Displays in a dedicated "No set meeting time" section below the grid.
+
+### 6. Course Data Model & Safe Migration (Version 3)
+- **Distinct Course Records (`populi_courses`)**:
+  - `{ id, code, name, colorNumber, source }`
+  - All assignments and classes reference courses through `courseId`.
+- **Multi-Tier Color Allocation (`allocateColorNumber()`)**:
+  - Assigns the first unused color from 1 to 8.
+  - If all 8 colors are in use, assigns the least-used color to maintain balance.
+- **Untouched Snapshot & Marker**:
+  - `populi_migration_backup_pre_v3` stores untouched raw data before migration starts and is never overwritten.
+  - `populi_data_version = "3"` is written LAST after all writes succeed.
+  - If migration encounters an error, a recovery screen appears with a **"Download my old data"** button.
+  - `clearAllData()` clears lists while keeping the version marker at `"3"`.
+- **Version 3 Backup & Universal Import**:
+  - Exports `{ version: 3, courses, assignments, classes }`.
+  - Seamlessly imports Version 1, 2, and 3 backup files.
 
 ---
 
@@ -166,64 +143,69 @@ In Stage 1, courses have been upgraded from loose strings copied onto each item 
 
 ---
 
-## 🧪 Stage 1 Verification & Testing Steps
+## 🧪 Testing Guide
 
-To test the Stage 1 data model and migration:
-
-### Test 1: Automatic Migration from Existing Data
+### Test 1: Navigation & Empty State
 1. Open `index.html` in your browser.
-2. If you had existing assignments or class schedule items:
-   - Notice everything renders normally without missing data or broken cards.
-   - Open Developer Tools (`F12`) > **Application** / **Storage** > **Local Storage**:
-     - Check `populi_data_version`: value is `"3"`.
-     - Check `populi_courses`: contains an array of real course objects (`id, code, name, colorNumber, source`).
-     - Check `populi_assignments`: items have `courseId` matching the course IDs.
-     - Check `populi_classes`: items have `courseId` matching the course IDs.
-     - Check `populi_migration_backup_pre_v3`: contains your untouched pre-migration raw data.
+2. In the top bar, click the new **Courses** tab:
+   - Notice the Courses tab is highlighted with `aria-selected="true"`.
+   - The top action button updates to **`+ Add course`**.
+3. If no courses exist, observe the empty state with the **`+ Add your first course`** button.
 
-### Test 2: Sample Data & Shared Course Dropdowns
-1. Scroll down to **Data & Backup tools**, click **Load Sample Data**, and confirm.
-2. In Local Storage, inspect `populi_courses`:
-   - Notice 4 sample courses: `THEO 201`, `BIBL 110`, `MIN 305`, `CHAP 100`.
-3. Check the **Filter by Course** dropdown on the Planner tab:
-   - Lists all 4 courses by code. Selecting one filters assignments accordingly.
-4. Click `+ Add assignment` in the top bar:
-   - The Course dropdown shows all 4 courses.
-5. Click the **Schedule** tab:
-   - The weekly grid and the "No set meeting time" section display properly with their assigned course colors.
+### Test 2: Add Course via Dialog
+1. Click **`+ Add course`** in the top bar:
+   - The native Course dialog opens with heading *"Add Course"*.
+   - Focus is automatically placed in the Course Code field.
+   - The color picker selects the first available color swatch by default.
+2. Enter:
+   - Code: `HIST 201`
+   - Name: `Church History I`
+   - Select color swatch 6 (Teal).
+3. Click **Save**:
+   - The dialog closes, and the course card appears in the grid.
+   - The card shows code `HIST 201` with a teal accent bar, title `Church History I`, and summary `0 open assignments • No class meetings`.
 
-### Test 3: "+ Add New Course..." Creates Real Course Records
-1. On the **Planner** tab, click `+ Add assignment`.
-2. Select `+ Add New Course...`.
-3. Enter Code `PHIL 101` and Name `Intro to Philosophy`.
-4. Enter an Assignment Title and Due Date, then click **Save**.
-5. Inspect `populi_courses` in Local Storage:
-   - A new course `PHIL 101` has been created with the next unused color (e.g. `colorNumber: 5`).
-6. Click the **Schedule** tab and click `+ Add class`:
-   - Open the Course dropdown: `PHIL 101 - Intro to Philosophy` is already in the list!
+### Test 3: Duplicate Code Prevention
+1. Click **`+ Add course`**.
+2. Enter Code `hist  201` (same code in lowercase with extra spaces).
+3. Click **Save**:
+   - The form displays an inline error: `A course with the code "HIST 201" already exists.`
+   - The dialog remains open so you can correct the code.
+4. Click **Cancel** to close the dialog.
 
-### Test 4: Version 3 Backup Export & Import
-1. Scroll to **Data & Backup tools** and click **Export Backup**.
-2. Open the downloaded file in a text editor:
-   - Notice `"version": 3`.
-   - Contains top-level `courses`, `assignments`, and `classes` arrays.
-3. Click **Clear All Data** and confirm:
-   - All items and courses are cleared.
-   - Local Storage shows `populi_data_version` is still `"3"`.
-4. Click **Import Backup** and select your downloaded Version 3 file:
-   - Confirmation dialog shows counts of courses, assignments, and class meetings.
-   - After confirming, all courses, cards, calendar dots, and schedule blocks restore cleanly.
+### Test 4: Course Card Summaries
+1. Load sample data (under **Data & Backup tools**, click **Load Sample Data**).
+2. Switch to the **Courses** tab:
+   - Notice all 4 courses (`BIBL 110`, `CHAP 100`, `MIN 305`, `THEO 201`) sorted alphabetically.
+   - `CHAP 100` displays summary: `0 open assignments • No set meeting time`.
+   - Other courses display summaries like: `3 open assignments • 1 class meeting`.
+3. Switch to the **Planner** tab and check off one assignment for `THEO 201`.
+4. Switch back to the **Courses** tab:
+   - The open assignment count for `THEO 201` immediately updates to reflect only open items.
 
-### Test 5: Backward Compatibility (V1 and V2 Import)
-1. You can test importing an older Version 1 or Version 2 backup file:
-   - A Version 2 file will rebuild course records, maintain legacy color selections, and relink all items.
-   - A Version 1 file will merge courses, relink assignments, and leave the class schedule untouched.
+### Test 5: Edit Course (Rename & Recolor)
+1. On the **Courses** tab, find `THEO 201` and click **Edit**:
+   - Dialog opens with heading *"Edit Course"*.
+   - Code, Name, and current color swatch (Rose) are pre-selected.
+2. Change the code to `THEO 202`, name to `Systematic Theology II`, and pick color swatch 7 (Terracotta).
+3. Click **Save**:
+   - The course card updates immediately.
+   - Switch to the **Schedule** tab: class blocks now display the new code `THEO 202` and the new terracotta color.
+   - Switch to the **Planner** tab: assignment tags and course filter dropdown reflect `THEO 202`.
+
+### Test 6: Cascade Delete with Warning
+1. On the **Courses** tab, click **Delete** on `THEO 202`:
+   - A confirmation dialog warns: *"Are you sure you want to delete course "THEO 202 - Systematic Theology II"? This will permanently delete X assignments and Y class meetings. This action cannot be undone."*
+2. Confirm the deletion:
+   - The course card is removed.
+   - Switch to the **Planner** tab: all assignments linked to `THEO 202` have been deleted.
+   - Switch to the **Schedule** tab: all class meetings for `THEO 202` have been deleted from the grid.
 
 ---
 
 ## 🌿 Git Version Control Commands
 
-To commit your Stage 1 changes:
+To commit your changes to Git:
 
 ```bash
 # 1. Navigate to the project folder
@@ -236,5 +218,5 @@ git status
 git add .
 
 # 4. Commit your changes
-git commit -m "Implement Stage 1: Course records, Version 3 migration, color allocation, and v3 backup schema"
+git commit -m "Implement Stage 2: Courses tab, Course modal dialog with color picker, card summaries, and cascade delete"
 ```

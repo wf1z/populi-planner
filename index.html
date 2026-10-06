@@ -16,6 +16,7 @@
         <nav role="tablist" class="top-bar-tabs">
           <button type="button" role="tab" class="tab-btn" id="tab-btn-planner" aria-selected="true" aria-controls="panel-planner">Planner</button>
           <button type="button" role="tab" class="tab-btn" id="tab-btn-schedule" aria-selected="false" aria-controls="panel-schedule">Schedule</button>
+          <button type="button" role="tab" class="tab-btn" id="tab-btn-courses" aria-selected="false" aria-controls="panel-courses">Courses</button>
         </nav>
       </div>
       <div class="top-bar-actions">
@@ -141,6 +142,21 @@
         <div id="schedule-grid-container"></div>
         <div id="schedule-unscheduled-container" style="display: none;"></div>
         <div id="schedule-meetings-list"></div>
+      </div>
+    </div>
+
+    <!-- Tab Panel 3: Courses (Manage Courses) -->
+    <div id="panel-courses" role="tabpanel" aria-labelledby="tab-btn-courses" style="display: none;">
+      <div class="courses-container">
+        <!-- Empty State Welcome Box (Shown when no courses exist) -->
+        <div id="courses-empty-state" class="welcome-empty-state" style="display: none;">
+          <h3>No courses yet</h3>
+          <p>Add your courses to track assignments, schedule meetings, and organize your coursework.</p>
+          <button type="button" class="btn-empty-add" id="btn-courses-empty-add">+ Add your first course</button>
+        </div>
+
+        <!-- Courses List Grid -->
+        <div id="courses-list" class="courses-grid"></div>
       </div>
     </div>
 
@@ -296,14 +312,90 @@
     </div>
   </dialog>
 
+  <!-- Native Modal Dialog for Adding / Editing Courses -->
+  <dialog id="course-dialog" class="modal-dialog">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h2 class="dialog-title" id="course-dialog-heading">Add Course</h2>
+        <button type="button" class="dialog-close-btn" id="course-dialog-close-btn" aria-label="Close dialog">&times;</button>
+      </div>
+      <form id="course-form">
+        <div class="dialog-body">
+          <div class="form-error-msg" id="course-form-error" style="display: none;"></div>
+
+          <div class="form-grid">
+            <!-- Course Code -->
+            <div class="form-group form-group-full">
+              <label for="course-form-code" class="form-label">Course Code</label>
+              <input type="text" id="course-form-code" class="form-input" placeholder="e.g. THEO 201" required>
+            </div>
+
+            <!-- Course Name -->
+            <div class="form-group form-group-full">
+              <label for="course-form-name" class="form-label">Course Name (optional)</label>
+              <input type="text" id="course-form-name" class="form-input" placeholder="e.g. Systematic Theology I">
+              <p class="form-hint">Defaults to course code if left blank.</p>
+            </div>
+
+            <!-- Course Color Palette -->
+            <div class="form-group form-group-full">
+              <label class="form-label">Course Color</label>
+              <div class="course-color-picker" role="radiogroup" aria-label="Select course color">
+                <label class="color-swatch-option" title="Color 1: Muted Rose">
+                  <input type="radio" name="course-color-choice" value="1" class="color-swatch-radio">
+                  <span class="color-swatch-pill" style="background-color: var(--course-color-1);"></span>
+                </label>
+                <label class="color-swatch-option" title="Color 2: Muted Forest">
+                  <input type="radio" name="course-color-choice" value="2" class="color-swatch-radio">
+                  <span class="color-swatch-pill" style="background-color: var(--course-color-2);"></span>
+                </label>
+                <label class="color-swatch-option" title="Color 3: Muted Amber">
+                  <input type="radio" name="course-color-choice" value="3" class="color-swatch-radio">
+                  <span class="color-swatch-pill" style="background-color: var(--course-color-3);"></span>
+                </label>
+                <label class="color-swatch-option" title="Color 4: Muted Slate">
+                  <input type="radio" name="course-color-choice" value="4" class="color-swatch-radio">
+                  <span class="color-swatch-pill" style="background-color: var(--course-color-4);"></span>
+                </label>
+                <label class="color-swatch-option" title="Color 5: Muted Plum">
+                  <input type="radio" name="course-color-choice" value="5" class="color-swatch-radio">
+                  <span class="color-swatch-pill" style="background-color: var(--course-color-5);"></span>
+                </label>
+                <label class="color-swatch-option" title="Color 6: Muted Teal">
+                  <input type="radio" name="course-color-choice" value="6" class="color-swatch-radio">
+                  <span class="color-swatch-pill" style="background-color: var(--course-color-6);"></span>
+                </label>
+                <label class="color-swatch-option" title="Color 7: Muted Terracotta">
+                  <input type="radio" name="course-color-choice" value="7" class="color-swatch-radio">
+                  <span class="color-swatch-pill" style="background-color: var(--course-color-7);"></span>
+                </label>
+                <label class="color-swatch-option" title="Color 8: Muted Indigo">
+                  <input type="radio" name="course-color-choice" value="8" class="color-swatch-radio">
+                  <span class="color-swatch-pill" style="background-color: var(--course-color-8);"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dialog Footer Actions -->
+        <div class="dialog-footer">
+          <button type="button" class="btn-secondary" id="course-form-cancel-btn">Cancel</button>
+          <button type="submit" class="btn-primary" id="course-form-submit-btn">Save</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
   <!-- Hidden file input for Backup Import -->
   <input type="file" id="import-file-input" accept=".json" style="display: none;">
 
-  <!-- Scripts: Sample Data, Storage, Calendar, Schedule, and App Logic -->
+  <!-- Scripts: Sample Data, Storage, Calendar, Schedule, Courses, and App Logic -->
   <script src="data/assignments.js"></script>
   <script src="storage.js"></script>
   <script src="calendar.js"></script>
   <script src="schedule.js"></script>
+  <script src="courses.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
