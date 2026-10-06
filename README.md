@@ -1,4 +1,4 @@
-# Populi Planner (Manual Entry & History Tracking)
+# Populi Planner (Manual Entry, Calendar & Modal Popups)
 
 A clean, at-a-glance coursework planner for college students that highlights upcoming assignments and clearly flags what is **NEW** or has a **CHANGED** due date.
 
@@ -15,43 +15,29 @@ A clean, at-a-glance coursework planner for college students that highlights upc
 
 ---
 
-## ✨ Features & How to Use
+## ✨ Features & Architecture (Stage 1)
 
-### 1. Manual Entry ("Add Assignment")
-- Select an existing course from the dropdown, or choose **"+ Add New Course..."** to enter a new course code (e.g. `THEO 201`) and name (e.g. `Systematic Theology I`).
-- Enter the assignment title and select the due date.
-- **"Just posted in Populi" checkbox** (default: *unchecked*):
-  - When typing in your semester syllabus, leave it unchecked so assignments don't trigger "New" badges.
-  - Check this box when entering an assignment that was newly announced or posted in Populi to show the **New** badge for 3 days.
+### 1. Sticky Top Bar & Tabs
+- **Compact & Sticky**: Always visible at the top (`height: 56px`).
+- **Tabs**: Real `<button role="tab">` elements for **Planner** and **Schedule**. The active tab persists across all page updates and actions.
+- **Top Action Button**: Prominent `+ Add assignment` button on the Planner tab. In Stage 1, this button is automatically hidden on the Schedule tab until Stage 2 is built.
 
-### 2. Editing & Deleting Assignments
-- Each card has **Edit** and **Delete** buttons.
-- Deleting prompts for confirmation to prevent accidental clicks.
-- Clicking **Edit** loads the assignment into the top form:
-  - If you change the due date, the **"Mark due date as changed"** checkbox (default: *checked*) logs the old date and shows the **"Due date changed (Was X → now Y)"** badge for 3 days.
-  - If you are only fixing a typo in the title or date without wanting a badge, uncheck the box before saving.
+### 2. Native Modal Dialog (`<dialog>`)
+- **First Screen Priority**: Forms no longer occupy space on the main page. The first screen focuses directly on upcoming coursework and the visual calendar.
+- **Triggering**: Clicking `+ Add assignment`, `+ Add your first assignment` in an empty state, or `Edit` on an assignment card opens the native `<dialog>`.
+- **Safe Backdrop Click**: Only closes the modal when *both* `mousedown` and `click` occur on the backdrop itself. Selecting text with your mouse drifting outside the dialog will never close it.
+- **Focus Management**: Focus automatically moves to the title field on open, and returns to the button that opened it when closed. Supports native `Esc` and Cancel.
+- **"Save and add another"**: Rapid syllabus entry: saves the assignment, retains the selected course and due date, clears the title, and re-focuses the title field without closing the modal.
 
-### 3. Dynamic Sections
-- **Overdue**: Automatically appears at the top *only* when there are assignments past their due date.
-- **Today**: Due today (based on local midnight).
-- **This Week**: Due within the next 7 days.
-- **Later**: Due in 8+ days.
-- Assignments are sorted **soonest first** by due date within every section.
+### 3. Sticky Offset & Scroll Padding
+- To prevent the sticky calendar sidebar from sliding under the sticky top bar, its sticky `top` is offset to `calc(var(--topbar-height) + var(--space-md))` and its `max-height` subtracts the top bar height.
+- `scroll-padding-top` is configured so anchor scrolling and focus navigation never get obscured behind the top bar.
 
-### 4. Timezone-Safe Dates
-Due dates (`YYYY-MM-DD`) are parsed as local calendar dates (`new Date(year, month - 1, day)`), preventing off-by-one errors caused by UTC conversions.
+### 4. Slimmed-Down Planner Layout
+- Course filtering is reduced to a single compact line above the coursework.
+- Collapsed **Data & Backup tools** (`<details>` at the bottom of the page) keeps data import, export, sample loading, and clearing available without visual clutter.
 
-### 5. Safe Rendering
-All titles, course codes, and course names are injected into the page using `textContent` rather than `innerHTML`. Titles containing special characters (e.g., `<Scripture & Hermeneutics>`) will render safely without breaking page markup.
-
-### 6. Data Management & Backups
-At the top of the page:
-- **Load Sample Data**: Populates realistic sample coursework across Theology, Biblical Studies, and Ministry courses with relative dates (never stale). Asks for confirmation if assignments already exist.
-- **Clear All Data**: Resets the planner to a clean state after asking for confirmation.
-- **Export Backup**: Downloads a timestamped JSON file (`populi-planner-backup-YYYY-MM-DD.json`) with `version: 1`.
-- **Import Backup**: Restores a previously downloaded backup file. Validates the data before replacing current assignments.
-
-### 7. Visual Month Calendar (Side Panel)
+### 5. Visual Month Calendar (Side Panel)
 - **Always 6 Rows (42 Cells)**: Sunday-first grid that maintains consistent height month-to-month to prevent layout jumps.
 - **Assignment Indicator Dots**:
   - Up to 3 dots per day, plus `+N` for additional coursework.
@@ -59,24 +45,24 @@ At the top of the page:
   - Overdue items use danger colors (`--danger-text`).
   - Planned items show dimmed dots.
 - **Selected Day Panel**: Clicking any day reveals its tasks in the sidebar panel with title, course code, and interactive "planned" checkbox. Clicking the same day deselects it.
-- **Persistent State & Focus**: Navigating months (Prev/Next/Today) or checking off tasks maintains the viewed month, selected date, and active keyboard focus without resetting.
-- **Responsive Layout**: Sticky sidebar beside the main sections on wide screens (≥900px) with scrollable overflow (`max-height: calc(100vh - 2 * var(--space-md))`), stacking cleanly above the sections on smaller screens.
+- **Responsive Layout**: Sticky sidebar beside the main sections on wide screens (≥900px), stacking cleanly above the sections on smaller screens.
 
 ---
 
 ## 🎨 Design Rules & Styling
 
-### Design Rules for the Future
+### Design Rules
 1. **Never hardcode colors**: Always reference the CSS custom properties in `:root` (e.g. `var(--bg-color)`, `var(--input-bg)`, `var(--text-main)`).
-2. **Never overwrite existing `:root` theme values**: Preserve the custom dark palette across all future features and updates.
+2. **Never overwrite existing `:root` theme values**: Preserve the custom dark palette across all updates.
 
 ### Theme Variables (`styles.css`)
-
-All theme controls live in **`styles.css`** inside the `:root` block:
 
 ```css
 :root {
   color-scheme: dark;
+
+  /* Layout Dimensions */
+  --topbar-height: 56px;
 
   /* Page Colors */
   --bg-color: #0f0d12;
@@ -84,6 +70,7 @@ All theme controls live in **`styles.css`** inside the `:root` block:
   --card-border: #2e2937;
   --input-bg: #221e29;
   --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --backdrop-color: rgba(0, 0, 0, 0.75);
 
   /* Text Colors */
   --text-main: #ffffff;
@@ -122,7 +109,7 @@ All theme controls live in **`styles.css`** inside the `:root` block:
 
 ## 🌿 Git Version Control Commands
 
-To save your changes to Git, open your terminal (in **Git Bash**, remember to quote the Windows path or use forward slashes):
+To save Stage 1 changes to Git, open your terminal (in **Git Bash**, remember to quote the Windows path or use forward slashes):
 
 ```bash
 # 1. Navigate to the project folder
@@ -135,5 +122,5 @@ git status
 git add .
 
 # 4. Commit your changes
-git commit -m "Add responsive visual month calendar side panel with persistent state, keyboard focus, and assignment dots"
+git commit -m "Stage 1: Add sticky top bar, native modal dialog, compact layout, and collapsed backup tools"
 ```

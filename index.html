@@ -7,177 +7,206 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+
+  <!-- Sticky Top Bar: App Title, Tabs, and Action Button -->
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <div class="top-bar-left">
+        <h1 class="app-title">Populi Planner</h1>
+        <nav role="tablist" class="top-bar-tabs">
+          <button type="button" role="tab" class="tab-btn" id="tab-btn-planner" aria-selected="true" aria-controls="panel-planner">Planner</button>
+          <button type="button" role="tab" class="tab-btn" id="tab-btn-schedule" aria-selected="false" aria-controls="panel-schedule">Schedule</button>
+        </nav>
+      </div>
+      <div class="top-bar-actions">
+        <button type="button" class="btn-top-add" id="top-action-btn">+ Add assignment</button>
+      </div>
+    </div>
+  </header>
+
   <div class="container">
 
-    <!-- Header & App Intro -->
-    <header>
-      <div class="header-top">
-        <div>
-          <h1 class="app-title">Populi Planner</h1>
-          <p class="app-subtitle">At-a-glance coursework tracking: see what's due, what was just posted, and what changed.</p>
+    <!-- Tab Panel 1: Planner (Default Active) -->
+    <div id="panel-planner" role="tabpanel" aria-labelledby="tab-btn-planner">
+
+      <!-- Compact Single-Line Course Filter -->
+      <div class="compact-filter-bar">
+        <label for="course-filter" class="filter-label">Filter by Course:</label>
+        <select id="course-filter" class="filter-select">
+          <option value="all">All Courses</option>
+        </select>
+      </div>
+
+      <!-- Empty State Welcome Box (Shown when no assignments exist at all) -->
+      <div id="welcome-empty-state" class="welcome-empty-state" style="display: none;">
+        <h3>No assignments yet</h3>
+        <p>Get started by adding your upcoming coursework.</p>
+        <button type="button" class="btn-empty-add" id="btn-empty-add">+ Add your first assignment</button>
+      </div>
+
+      <!-- Main Layout: Assignment Sections + Sticky Calendar Sidebar -->
+      <div class="content-layout">
+
+        <!-- Left / Main Column: Assignment Sections -->
+        <div class="main-column">
+          <main id="main-content">
+            <!-- Section 0: Overdue (Only visible when overdue items exist) -->
+            <section class="section section-overdue" id="section-overdue" style="display: none;">
+              <h2 class="section-title">
+                Overdue
+                <span class="section-count" id="count-overdue">0</span>
+              </h2>
+              <div class="cards-container" id="cards-overdue"></div>
+            </section>
+
+            <!-- Section 1: Today -->
+            <section class="section" id="section-today">
+              <h2 class="section-title">
+                Today
+                <span class="section-count" id="count-today">0</span>
+              </h2>
+              <div class="cards-container" id="cards-today"></div>
+            </section>
+
+            <!-- Section 2: This Week -->
+            <section class="section" id="section-this-week">
+              <h2 class="section-title">
+                This Week
+                <span class="section-count" id="count-this-week">0</span>
+              </h2>
+              <div class="cards-container" id="cards-this-week"></div>
+            </section>
+
+            <!-- Section 3: Later -->
+            <section class="section" id="section-later">
+              <h2 class="section-title">
+                Later
+                <span class="section-count" id="count-later">0</span>
+              </h2>
+              <div class="cards-container" id="cards-later"></div>
+            </section>
+          </main>
         </div>
-      </div>
 
-      <!-- Data Management Toolbar -->
-      <div class="toolbar">
-        <button type="button" class="btn-tool" id="btn-load-sample">Load Sample Data</button>
-        <button type="button" class="btn-tool" id="btn-export">Export Backup</button>
-        <button type="button" class="btn-tool" id="btn-import">Import Backup</button>
-        <button type="button" class="btn-tool btn-tool-danger" id="btn-clear-all">Clear All Data</button>
-      </div>
-    </header>
-
-    <!-- Hidden file input for Backup Import -->
-    <input type="file" id="import-file-input" accept=".json" style="display: none;">
-
-    <!-- Add / Edit Assignment Form -->
-    <section class="form-card">
-      <h2 class="form-title" id="form-heading">Add Assignment</h2>
-      <form id="assignment-form">
-        
-        <div class="form-grid">
-          <!-- Course Selection -->
-          <div class="form-group">
-            <label for="form-course" class="form-label">Course</label>
-            <select id="form-course" class="form-select">
-              <!-- Populated dynamically with existing courses plus + Add New Course -->
-            </select>
-
-            <!-- Custom Course Inputs (Shown when "+ Add New Course..." is selected) -->
-            <div id="new-course-fields" class="new-course-box" style="display: none;">
-              <input type="text" id="new-course-code" class="form-input" placeholder="Code (e.g. THEO 201)">
-              <input type="text" id="new-course-name" class="form-input" placeholder="Course Name (e.g. Systematic Theology I)">
+        <!-- Right / Sidebar Column: Month Calendar -->
+        <aside class="calendar-sidebar" id="calendar-sidebar">
+          <div class="calendar-card">
+            <!-- Calendar Header & Navigation Controls -->
+            <div class="calendar-header">
+              <h3 class="calendar-month-title" id="calendar-month-title"></h3>
+              <div class="calendar-nav-buttons">
+                <button type="button" class="btn-cal-nav" id="calendar-prev-btn" aria-label="Previous month">&lt;</button>
+                <button type="button" class="btn-cal-nav btn-cal-today" id="calendar-today-btn">Today</button>
+                <button type="button" class="btn-cal-nav" id="calendar-next-btn" aria-label="Next month">&gt;</button>
+              </div>
             </div>
+
+            <!-- Sunday-first Weekday Headers -->
+            <div class="calendar-weekdays" aria-hidden="true">
+              <span>Sun</span>
+              <span>Mon</span>
+              <span>Tue</span>
+              <span>Wed</span>
+              <span>Thu</span>
+              <span>Fri</span>
+              <span>Sat</span>
+            </div>
+
+            <!-- 42-day Month Grid -->
+            <div class="calendar-grid" id="calendar-grid"></div>
+
+            <!-- Selected Day Coursework Details -->
+            <div class="calendar-selected-details" id="calendar-selected-details"></div>
           </div>
+        </aside>
 
-          <!-- Due Date -->
-          <div class="form-group">
-            <label for="form-due-date" class="form-label">Due Date</label>
-            <input type="date" id="form-due-date" class="form-input" required>
-          </div>
-
-          <!-- Title -->
-          <div class="form-group form-group-full">
-            <label for="form-title" class="form-label">Assignment Title</label>
-            <input type="text" id="form-title" class="form-input" placeholder="e.g. Weekly Reading Reflection" required>
-          </div>
-        </div>
-
-        <!-- Checkbox for 'New' Badge in Add Mode (Default Unchecked) -->
-        <div class="checkbox-row" id="form-new-checkbox-row">
-          <input type="checkbox" id="form-just-posted">
-          <label for="form-just-posted">Just posted in Populi (show "New" badge for 3 days)</label>
-        </div>
-
-        <!-- Checkbox for 'Changed' Badge in Edit Mode (Default Checked) -->
-        <div class="checkbox-row" id="form-changed-checkbox-row" style="display: none;">
-          <input type="checkbox" id="form-mark-changed" checked>
-          <label for="form-mark-changed">Mark due date as changed (show "Due date changed" badge for 3 days)</label>
-        </div>
-
-        <!-- Form Action Buttons -->
-        <div class="form-actions">
-          <button type="submit" class="btn-primary" id="form-submit-btn">Add Assignment</button>
-          <button type="button" class="btn-cancel" id="form-cancel-btn" style="display: none;">Cancel</button>
-        </div>
-
-      </form>
-    </section>
-
-    <!-- Two-column Responsive Layout: Main Column + Calendar Sidebar -->
-    <div class="content-layout">
-
-      <!-- Left / Main Column: Filter and Assignment Sections -->
-      <div class="main-column">
-        <!-- Filter by Course Bar -->
-        <div class="filter-bar">
-          <label for="course-filter" class="filter-label">Filter by Course:</label>
-          <select id="course-filter" class="filter-select">
-            <option value="all">All Courses</option>
-          </select>
-        </div>
-
-        <!-- Empty State Welcome Box (Shown when no assignments exist at all) -->
-        <div id="welcome-empty-state" class="welcome-empty-state" style="display: none;">
-          <h3>No assignments yet</h3>
-          <p>Use the form above to add your coursework, or click <strong>Load Sample Data</strong> to explore.</p>
-        </div>
-
-        <!-- Main Content: Assignment Sections -->
-        <main id="main-content">
-          <!-- Section 0: Overdue (Only visible when overdue items exist) -->
-          <section class="section section-overdue" id="section-overdue" style="display: none;">
-            <h2 class="section-title">
-              Overdue
-              <span class="section-count" id="count-overdue">0</span>
-            </h2>
-            <div class="cards-container" id="cards-overdue"></div>
-          </section>
-
-          <!-- Section 1: Today -->
-          <section class="section" id="section-today">
-            <h2 class="section-title">
-              Today
-              <span class="section-count" id="count-today">0</span>
-            </h2>
-            <div class="cards-container" id="cards-today"></div>
-          </section>
-
-          <!-- Section 2: This Week -->
-          <section class="section" id="section-this-week">
-            <h2 class="section-title">
-              This Week
-              <span class="section-count" id="count-this-week">0</span>
-            </h2>
-            <div class="cards-container" id="cards-this-week"></div>
-          </section>
-
-          <!-- Section 3: Later -->
-          <section class="section" id="section-later">
-            <h2 class="section-title">
-              Later
-              <span class="section-count" id="count-later">0</span>
-            </h2>
-            <div class="cards-container" id="cards-later"></div>
-          </section>
-        </main>
       </div>
 
-      <!-- Right / Sidebar Column: Month Calendar -->
-      <aside class="calendar-sidebar" id="calendar-sidebar">
-        <div class="calendar-card">
-          <!-- Calendar Header & Navigation Controls -->
-          <div class="calendar-header">
-            <h3 class="calendar-month-title" id="calendar-month-title"></h3>
-            <div class="calendar-nav-buttons">
-              <button type="button" class="btn-cal-nav" id="calendar-prev-btn" aria-label="Previous month">&lt;</button>
-              <button type="button" class="btn-cal-nav btn-cal-today" id="calendar-today-btn">Today</button>
-              <button type="button" class="btn-cal-nav" id="calendar-next-btn" aria-label="Next month">&gt;</button>
-            </div>
-          </div>
-
-          <!-- Sunday-first Weekday Headers -->
-          <div class="calendar-weekdays" aria-hidden="true">
-            <span>Sun</span>
-            <span>Mon</span>
-            <span>Tue</span>
-            <span>Wed</span>
-            <span>Thu</span>
-            <span>Fri</span>
-            <span>Sat</span>
-          </div>
-
-          <!-- 42-day Month Grid -->
-          <div class="calendar-grid" id="calendar-grid"></div>
-
-          <!-- Selected Day Coursework Details -->
-          <div class="calendar-selected-details" id="calendar-selected-details"></div>
+      <!-- Collapsed Data & Backup Section at Bottom -->
+      <details class="data-backup-details" id="data-backup-details">
+        <summary>Data & Backup tools</summary>
+        <div class="toolbar">
+          <button type="button" class="btn-tool" id="btn-load-sample">Load Sample Data</button>
+          <button type="button" class="btn-tool" id="btn-export">Export Backup</button>
+          <button type="button" class="btn-tool" id="btn-import">Import Backup</button>
+          <button type="button" class="btn-tool btn-tool-danger" id="btn-clear-all">Clear All Data</button>
         </div>
-      </aside>
+      </details>
 
     </div>
 
+    <!-- Tab Panel 2: Schedule (Coming in Stage 2 Placeholder) -->
+    <div id="panel-schedule" role="tabpanel" aria-labelledby="tab-btn-schedule" style="display: none;">
+      <div class="schedule-placeholder">
+        <h3>Weekly Class Schedule</h3>
+        <p>Stage 2 is ready to build: a weekly time grid (Sunday–Saturday) with auto-fitting hours, overlapping class layout, and course colors.</p>
+      </div>
+    </div>
+
   </div>
+
+  <!-- Native Modal Dialog for Adding / Editing Assignments -->
+  <dialog id="assignment-dialog" class="modal-dialog">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h2 class="dialog-title" id="form-heading">Add Assignment</h2>
+        <button type="button" class="dialog-close-btn" id="dialog-close-btn" aria-label="Close dialog">&times;</button>
+      </div>
+      <form id="assignment-form">
+        <div class="dialog-body">
+          <div class="form-grid">
+            <!-- Course Selection -->
+            <div class="form-group">
+              <label for="form-course" class="form-label">Course</label>
+              <select id="form-course" class="form-select">
+                <!-- Populated dynamically with existing courses plus + Add New Course -->
+              </select>
+
+              <!-- Custom Course Inputs (Shown when "+ Add New Course..." is selected) -->
+              <div id="new-course-fields" class="new-course-box" style="display: none;">
+                <input type="text" id="new-course-code" class="form-input" placeholder="Code (e.g. THEO 201)">
+                <input type="text" id="new-course-name" class="form-input" placeholder="Course Name (e.g. Systematic Theology I)">
+              </div>
+            </div>
+
+            <!-- Due Date -->
+            <div class="form-group">
+              <label for="form-due-date" class="form-label">Due Date</label>
+              <input type="date" id="form-due-date" class="form-input" required>
+            </div>
+
+            <!-- Title -->
+            <div class="form-group form-group-full">
+              <label for="form-title" class="form-label">Assignment Title</label>
+              <input type="text" id="form-title" class="form-input" placeholder="e.g. Weekly Reading Reflection" required>
+            </div>
+          </div>
+
+          <!-- Checkbox for 'New' Badge in Add Mode (Default Unchecked) -->
+          <div class="checkbox-row" id="form-new-checkbox-row">
+            <input type="checkbox" id="form-just-posted">
+            <label for="form-just-posted">Just posted in Populi (show "New" badge for 3 days)</label>
+          </div>
+
+          <!-- Checkbox for 'Changed' Badge in Edit Mode (Default Checked) -->
+          <div class="checkbox-row" id="form-changed-checkbox-row" style="display: none;">
+            <input type="checkbox" id="form-mark-changed" checked>
+            <label for="form-mark-changed">Mark due date as changed (show "Due date changed" badge for 3 days)</label>
+          </div>
+        </div>
+
+        <!-- Dialog Footer Actions -->
+        <div class="dialog-footer">
+          <button type="button" class="btn-secondary" id="form-cancel-btn">Cancel</button>
+          <button type="button" class="btn-secondary" id="form-save-another-btn">Save and add another</button>
+          <button type="submit" class="btn-primary" id="form-submit-btn">Save</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Hidden file input for Backup Import -->
+  <input type="file" id="import-file-input" accept=".json" style="display: none;">
 
   <!-- Scripts: Sample Data, Storage, Calendar, and App Logic -->
   <script src="data/assignments.js"></script>

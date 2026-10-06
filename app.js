@@ -4,6 +4,15 @@ const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 // Currently editing assignment ID, or null when in Add mode.
 let currentEditingId = null;
 
+// Tracks active tab: "planner" or "schedule".
+let currentActiveTab = "planner";
+
+// Stores reference to the element that triggered the dialog for restoring focus on close.
+let lastFocusedElement = null;
+
+// Tracks whether mousedown originated on the dialog backdrop.
+let isBackdropMouseDown = false;
+
 // Parses a "YYYY-MM-DD" string into a local Date at midnight.
 function parseLocalDate(dateString) {
   const [year, month, day] = dateString.split("-").map(Number);
@@ -102,7 +111,7 @@ function createAssignmentCard(assignment) {
   editBtn.className = "btn-card-action";
   editBtn.textContent = "Edit";
   editBtn.addEventListener("click", function () {
-    startEditingAssignment(assignment);
+    openAssignmentDialog("edit", assignment);
   });
 
   const deleteBtn = document.createElement("button");
@@ -170,7 +179,7 @@ function syncCourseDropdowns(assignments) {
   const formCourseSelect = document.getElementById("form-course");
 
   const currentFilterValue = courseFilter.value;
-  const currentFormValue = formCourseSelect.value;
+  const currentFormValue = formCourseSelect ? formCourseSelect.value : null;
 
   // Collect unique courses mapped by courseCode
   const courseMap = new Map();
@@ -194,96 +203,117 @@ function syncCourseDropdowns(assignments) {
     courseFilter.value = "all";
   }
 
-  // Rebuild form course dropdown
-  formCourseSelect.innerHTML = "";
-  courseMap.forEach((name, code) => {
-    const opt = document.createElement("option");
-    opt.value = code;
-    opt.textContent = `${code} - ${name}`;
-    formCourseSelect.appendChild(opt);
-  });
+  // Rebuild form course dropdown if it exists
+  if (formCourseSelect) {
+    formCourseSelect.innerHTML = "";
+    courseMap.forEach((name, code) => {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = `${code} - ${name}`;
+      formCourseSelect.appendChild(opt);
+    });
 
-  const addCustomOption = document.createElement("option");
-  addCustomOption.value = "__NEW__";
-  addCustomOption.textContent = "+ Add New Course...";
-  formCourseSelect.appendChild(addCustomOption);
+    const addCustomOption = document.createElement("option");
+    addCustomOption.value = "__NEW__";
+    addCustomOption.textContent = "+ Add New Course...";
+    formCourseSelect.appendChild(addCustomOption);
 
-  if (currentFormValue && (courseMap.has(currentFormValue) || currentFormValue === "__NEW__")) {
-    formCourseSelect.value = currentFormValue;
-  } else if (courseMap.size > 0) {
-    formCourseSelect.selectedIndex = 0;
-  } else {
-    formCourseSelect.value = "__NEW__";
+    if (currentFormValue && (courseMap.has(currentFormValue) || currentFormValue === "__NEW__")) {
+      formCourseSelect.value = currentFormValue;
+    } else if (courseMap.size > 0) {
+      formCourseSelect.selectedIndex = 0;
+    } else {
+      formCourseSelect.value = "__NEW__";
+    }
+
+    updateNewCourseVisibility();
   }
-
-  updateNewCourseVisibility();
 }
 
 // Shows or hides the custom course input fields based on course selector choice.
 function updateNewCourseVisibility() {
   const formCourseSelect = document.getElementById("form-course");
   const newCourseFields = document.getElementById("new-course-fields");
+  if (!formCourseSelect || !newCourseFields) return;
   const isCustom = formCourseSelect.value === "__NEW__";
   newCourseFields.style.display = isCustom ? "grid" : "none";
 }
 
-// Puts the form into Edit mode and fills in existing assignment details.
-function startEditingAssignment(assignment) {
-  currentEditingId = assignment.id;
+// Opens the native modal dialog in either Add or Edit mode and focuses the first field.
+function openAssignmentDialog(mode, assignment = null) {
+  lastFocusedElement = document.activeElement;
+  const dialog = document.getElementById("assignment-dialog");
 
-  document.getElementById("form-heading").textContent = "Edit Assignment";
-  document.getElementById("form-submit-btn").textContent = "Update Assignment";
-  document.getElementById("form-cancel-btn").style.display = "inline-block";
+  const heading = document.getElementById("form-heading");
+  const submitBtn = document.getElementById("form-submit-btn");
+  const saveAnotherBtn = document.getElementById("form-save-another-btn");
+  const newCheckboxRow = document.getElementById("form-new-checkbox-row");
+  const changedCheckboxRow = document.getElementById("form-changed-checkbox-row");
+  const justPostedCheckbox = document.getElementById("form-just-posted");
+  const markChangedCheckbox = document.getElementById("form-mark-changed");
 
-  // Hide the 'New' checkbox and show the 'Mark due date changed' checkbox
-  document.getElementById("form-new-checkbox-row").style.display = "none";
-  document.getElementById("form-changed-checkbox-row").style.display = "flex";
-  document.getElementById("form-mark-changed").checked = true;
+  const titleInput = document.getElementById("form-title");
+  const dueDateInput = document.getElementById("form-due-date");
+  const courseSelect = document.getElementById("form-course");
 
-  // Fill in form inputs
-  document.getElementById("form-title").value = assignment.title;
-  document.getElementById("form-due-date").value = assignment.dueDate;
+  if (mode === "edit" && assignment) {
+    currentEditingId = assignment.id;
+    heading.textContent = "Edit Assignment";
+    submitBtn.textContent = "Save";
+    saveAnotherBtn.style.display = "none";
 
-  const formCourseSelect = document.getElementById("form-course");
-  let found = false;
-  for (let i = 0; i < formCourseSelect.options.length; i++) {
-    if (formCourseSelect.options[i].value === assignment.courseCode) {
-      formCourseSelect.selectedIndex = i;
-      found = true;
-      break;
+    newCheckboxRow.style.display = "none";
+    changedCheckboxRow.style.display = "flex";
+    markChangedCheckbox.checked = true;
+
+    titleInput.value = assignment.title;
+    dueDateInput.value = assignment.dueDate;
+
+    let matched = false;
+    for (let i = 0; i < courseSelect.options.length; i++) {
+      if (courseSelect.options[i].value === assignment.courseCode) {
+        courseSelect.selectedIndex = i;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      courseSelect.value = "__NEW__";
+      document.getElementById("new-course-code").value = assignment.courseCode;
+      document.getElementById("new-course-name").value = assignment.courseName || "";
+    }
+  } else {
+    currentEditingId = null;
+    heading.textContent = "Add Assignment";
+    submitBtn.textContent = "Save";
+    saveAnotherBtn.style.display = "inline-block";
+
+    newCheckboxRow.style.display = "flex";
+    changedCheckboxRow.style.display = "none";
+    justPostedCheckbox.checked = false;
+
+    titleInput.value = "";
+    if (!dueDateInput.value) {
+      dueDateInput.value = formatLocalYYYYMMDD(new Date());
     }
   }
 
-  if (!found) {
-    formCourseSelect.value = "__NEW__";
-    document.getElementById("new-course-code").value = assignment.courseCode;
-    document.getElementById("new-course-name").value = assignment.courseName || "";
+  updateNewCourseVisibility();
+  dialog.showModal();
+  titleInput.focus();
+}
+
+// Closes the assignment modal dialog and restores keyboard focus to the triggering element.
+function closeAssignmentDialog() {
+  const dialog = document.getElementById("assignment-dialog");
+  dialog.close();
+  if (lastFocusedElement && typeof lastFocusedElement.focus === "function") {
+    lastFocusedElement.focus();
   }
-  updateNewCourseVisibility();
-
-  // Scroll to form smoothly
-  document.querySelector(".form-card").scrollIntoView({ behavior: "smooth" });
 }
 
-// Resets the assignment form back to clean Add mode.
-function resetAssignmentForm() {
-  currentEditingId = null;
-  document.getElementById("form-heading").textContent = "Add Assignment";
-  document.getElementById("form-submit-btn").textContent = "Add Assignment";
-  document.getElementById("form-cancel-btn").style.display = "none";
-
-  document.getElementById("form-new-checkbox-row").style.display = "flex";
-  document.getElementById("form-changed-checkbox-row").style.display = "none";
-  document.getElementById("form-just-posted").checked = false;
-
-  document.getElementById("assignment-form").reset();
-  updateNewCourseVisibility();
-}
-
-// Handles form submission for both adding new and updating existing assignments.
-function handleFormSubmit(event) {
-  event.preventDefault();
-
+// Reads and validates inputs from the assignment dialog.
+function getValidatedFormValues() {
   const title = document.getElementById("form-title").value.trim();
   const dueDate = document.getElementById("form-due-date").value;
   const courseSelectValue = document.getElementById("form-course").value;
@@ -296,7 +326,7 @@ function handleFormSubmit(event) {
     courseName = document.getElementById("new-course-name").value.trim() || courseCode;
     if (!courseCode) {
       alert("Please enter a course code.");
-      return;
+      return null;
     }
   } else {
     courseCode = courseSelectValue;
@@ -307,28 +337,100 @@ function handleFormSubmit(event) {
 
   if (!title || !dueDate) {
     alert("Please fill in both a title and due date.");
-    return;
+    return null;
   }
+
+  return { title, dueDate, courseCode, courseName };
+}
+
+// Handles standard form submission (Save) for adding or updating an assignment.
+function handleFormSubmit(event) {
+  event.preventDefault();
+
+  const values = getValidatedFormValues();
+  if (!values) return;
 
   if (currentEditingId) {
-    // Update existing assignment
     const markDueDateChanged = document.getElementById("form-mark-changed").checked;
-    updateAssignment(currentEditingId, { courseCode, courseName, title, dueDate }, markDueDateChanged);
+    updateAssignment(currentEditingId, values, markDueDateChanged);
   } else {
-    // Add new assignment
     const isJustPosted = document.getElementById("form-just-posted").checked;
-    addAssignment({ courseCode, courseName, title, dueDate, isJustPosted });
+    addAssignment({
+      courseCode: values.courseCode,
+      courseName: values.courseName,
+      title: values.title,
+      dueDate: values.dueDate,
+      isJustPosted: isJustPosted
+    });
   }
 
-  resetAssignmentForm();
+  closeAssignmentDialog();
   renderApp();
+}
+
+// Handles "Save and add another" by saving the item, keeping course/date, and resetting title.
+function handleSaveAndAddAnother() {
+  const values = getValidatedFormValues();
+  if (!values) return;
+
+  const isJustPosted = document.getElementById("form-just-posted").checked;
+  addAssignment({
+    courseCode: values.courseCode,
+    courseName: values.courseName,
+    title: values.title,
+    dueDate: values.dueDate,
+    isJustPosted: isJustPosted
+  });
+
+  // Keep course and due date intact, clear title and uncheck 'just posted'
+  const titleInput = document.getElementById("form-title");
+  titleInput.value = "";
+  document.getElementById("form-just-posted").checked = false;
+  titleInput.focus();
+
+  // Redraw page behind the modal
+  renderApp();
+}
+
+// Switches between the Planner and Schedule tabs and toggles visibility.
+function switchTab(tabName) {
+  currentActiveTab = tabName;
+
+  const plannerTab = document.getElementById("tab-btn-planner");
+  const scheduleTab = document.getElementById("tab-btn-schedule");
+  const plannerPanel = document.getElementById("panel-planner");
+  const schedulePanel = document.getElementById("panel-schedule");
+  const topActionBtn = document.getElementById("top-action-btn");
+
+  if (tabName === "planner") {
+    plannerTab.setAttribute("aria-selected", "true");
+    scheduleTab.setAttribute("aria-selected", "false");
+    plannerPanel.style.display = "block";
+    schedulePanel.style.display = "none";
+
+    // In Stage 1: Action button is visible and active on Planner
+    topActionBtn.style.display = "inline-block";
+    topActionBtn.textContent = "+ Add assignment";
+  } else {
+    plannerTab.setAttribute("aria-selected", "false");
+    scheduleTab.setAttribute("aria-selected", "true");
+    plannerPanel.style.display = "none";
+    schedulePanel.style.display = "block";
+
+    // In Stage 1: Action button is hidden on Schedule until Stage 2 exists
+    topActionBtn.style.display = "none";
+  }
 }
 
 // Renders all assignment sections and the calendar, preserving active keyboard focus.
 function renderApp() {
+  const dialog = document.getElementById("assignment-dialog");
+  const isDialogOpen = dialog && dialog.open;
+
+  // Capture active focus if dialog is not open
   const activeEl = document.activeElement;
-  const activeId = activeEl ? activeEl.id : null;
-  const activeDateKey = activeEl && activeEl.dataset ? activeEl.dataset.dateKey : null;
+  const activeId = (!isDialogOpen && activeEl) ? activeEl.id : null;
+  const activeDateKey = (!isDialogOpen && activeEl && activeEl.dataset) ? activeEl.dataset.dateKey : null;
 
   const allAssignments = getStoredAssignments();
   const selectedCourse = document.getElementById("course-filter").value;
@@ -398,13 +500,18 @@ function renderApp() {
     window.renderCalendar(filtered);
   }
 
-  // Restore keyboard focus so users aren't thrown to top of page
-  if (activeId && document.getElementById(activeId)) {
-    document.getElementById(activeId).focus();
-  } else if (activeDateKey) {
-    const dayBtn = document.querySelector(`.calendar-day[data-date-key="${activeDateKey}"]`);
-    if (dayBtn) {
-      dayBtn.focus();
+  // Ensure active tab view is preserved
+  switchTab(currentActiveTab);
+
+  // Restore keyboard focus only if the dialog is not open
+  if (!isDialogOpen) {
+    if (activeId && document.getElementById(activeId)) {
+      document.getElementById(activeId).focus();
+    } else if (activeDateKey) {
+      const dayBtn = document.querySelector(`.calendar-day[data-date-key="${activeDateKey}"]`);
+      if (dayBtn) {
+        dayBtn.focus();
+      }
     }
   }
 }
@@ -412,14 +519,54 @@ function renderApp() {
 // Expose renderApp globally so calendar.js can trigger unified redraws
 window.renderApp = renderApp;
 
-// Connects toolbar, form, and calendar event listeners and initiates first render.
+// Connects toolbar, form, modal, and calendar event listeners and initiates first render.
 document.addEventListener("DOMContentLoaded", function () {
-  // Form submission & cancel
+  const dialog = document.getElementById("assignment-dialog");
+
+  // Tab switching
+  document.getElementById("tab-btn-planner").addEventListener("click", () => switchTab("planner"));
+  document.getElementById("tab-btn-schedule").addEventListener("click", () => switchTab("schedule"));
+
+  // Top action button (+ Add assignment)
+  document.getElementById("top-action-btn").addEventListener("click", function () {
+    if (currentActiveTab === "planner") {
+      openAssignmentDialog("add");
+    }
+  });
+
+  // Empty state button
+  document.getElementById("btn-empty-add").addEventListener("click", function () {
+    openAssignmentDialog("add");
+  });
+
+  // Dialog controls
+  document.getElementById("form-cancel-btn").addEventListener("click", closeAssignmentDialog);
+  document.getElementById("dialog-close-btn").addEventListener("click", closeAssignmentDialog);
+  document.getElementById("form-save-another-btn").addEventListener("click", handleSaveAndAddAnother);
   document.getElementById("assignment-form").addEventListener("submit", handleFormSubmit);
-  document.getElementById("form-cancel-btn").addEventListener("click", resetAssignmentForm);
+
+  // Custom course fields toggle
   document.getElementById("form-course").addEventListener("change", updateNewCourseVisibility);
 
-  // Filter change
+  // Safe backdrop click handling: only close when BOTH mousedown and click happen on dialog backdrop
+  dialog.addEventListener("mousedown", function (event) {
+    isBackdropMouseDown = (event.target === dialog);
+  });
+  dialog.addEventListener("click", function (event) {
+    if (isBackdropMouseDown && event.target === dialog) {
+      closeAssignmentDialog();
+    }
+    isBackdropMouseDown = false;
+  });
+
+  // Native Esc key closes dialog; restore focus
+  dialog.addEventListener("close", function () {
+    if (lastFocusedElement && typeof lastFocusedElement.focus === "function") {
+      lastFocusedElement.focus();
+    }
+  });
+
+  // Course filter change
   document.getElementById("course-filter").addEventListener("change", renderApp);
 
   // Toolbar: Load Sample Data
@@ -439,7 +586,6 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("btn-clear-all").addEventListener("click", function () {
     if (confirm("Are you sure you want to clear ALL assignments? This cannot be undone.")) {
       clearAllAssignments();
-      resetAssignmentForm();
       renderApp();
     }
   });
