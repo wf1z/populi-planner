@@ -51,6 +51,17 @@ At the top of the page:
 - **Export Backup**: Downloads a timestamped JSON file (`populi-planner-backup-YYYY-MM-DD.json`) with `version: 1`.
 - **Import Backup**: Restores a previously downloaded backup file. Validates the data before replacing current assignments.
 
+### 7. Visual Month Calendar (Side Panel)
+- **Always 6 Rows (42 Cells)**: Sunday-first grid that maintains consistent height month-to-month to prevent layout jumps.
+- **Assignment Indicator Dots**:
+  - Up to 3 dots per day, plus `+N` for additional coursework.
+  - Normal dots use `--primary` (silvery pink).
+  - Overdue items use danger colors (`--danger-text`).
+  - Planned items show dimmed dots.
+- **Selected Day Panel**: Clicking any day reveals its tasks in the sidebar panel with title, course code, and interactive "planned" checkbox. Clicking the same day deselects it.
+- **Persistent State & Focus**: Navigating months (Prev/Next/Today) or checking off tasks maintains the viewed month, selected date, and active keyboard focus without resetting.
+- **Responsive Layout**: Sticky sidebar beside the main sections on wide screens (≥900px) with scrollable overflow (`max-height: calc(100vh - 2 * var(--space-md))`), stacking cleanly above the sections on smaller screens.
+
 ---
 
 ## 🎨 Design Rules & Styling
@@ -124,5 +135,5 @@ git status
 git add .
 
 # 4. Commit your changes
-git commit -m "Restore custom dark theme, eliminate hardcoded colors, and establish design rules"
+git commit -m "Add responsive visual month calendar side panel with persistent state, keyboard focus, and assignment dots"
 ```

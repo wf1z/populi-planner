@@ -70,7 +70,7 @@ function createAssignmentCard(assignment) {
   checkbox.title = "Mark as planned";
   checkbox.addEventListener("change", function () {
     toggleAssignmentPlanned(assignment.id);
-    card.classList.toggle("is-planned", checkbox.checked);
+    renderApp();
   });
   checkboxWrapper.appendChild(checkbox);
 
@@ -324,8 +324,12 @@ function handleFormSubmit(event) {
   renderApp();
 }
 
-// Renders all assignment sections sorted by due date and filtered by chosen course.
+// Renders all assignment sections and the calendar, preserving active keyboard focus.
 function renderApp() {
+  const activeEl = document.activeElement;
+  const activeId = activeEl ? activeEl.id : null;
+  const activeDateKey = activeEl && activeEl.dataset ? activeEl.dataset.dateKey : null;
+
   const allAssignments = getStoredAssignments();
   const selectedCourse = document.getElementById("course-filter").value;
   const welcomeBox = document.getElementById("welcome-empty-state");
@@ -388,9 +392,27 @@ function renderApp() {
   renderSection("cards-today", "count-today", todayList);
   renderSection("cards-this-week", "count-this-week", thisWeekList);
   renderSection("cards-later", "count-later", laterList);
+
+  // Redraw month calendar using the same course-filtered list
+  if (typeof window.renderCalendar === "function") {
+    window.renderCalendar(filtered);
+  }
+
+  // Restore keyboard focus so users aren't thrown to top of page
+  if (activeId && document.getElementById(activeId)) {
+    document.getElementById(activeId).focus();
+  } else if (activeDateKey) {
+    const dayBtn = document.querySelector(`.calendar-day[data-date-key="${activeDateKey}"]`);
+    if (dayBtn) {
+      dayBtn.focus();
+    }
+  }
 }
 
-// Connects toolbar and form event listeners and initiates first render.
+// Expose renderApp globally so calendar.js can trigger unified redraws
+window.renderApp = renderApp;
+
+// Connects toolbar, form, and calendar event listeners and initiates first render.
 document.addEventListener("DOMContentLoaded", function () {
   // Form submission & cancel
   document.getElementById("assignment-form").addEventListener("submit", handleFormSubmit);
@@ -454,6 +476,11 @@ document.addEventListener("DOMContentLoaded", function () {
     };
     reader.readAsText(file);
   });
+
+  // Initialize calendar controls (Prev, Next, Today)
+  if (typeof window.initCalendarControls === "function") {
+    window.initCalendarControls();
+  }
 
   // First initial render
   renderApp();

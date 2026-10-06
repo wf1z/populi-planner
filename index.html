@@ -84,64 +84,105 @@
       </form>
     </section>
 
-    <!-- Filter by Course Bar -->
-    <div class="filter-bar">
-      <label for="course-filter" class="filter-label">Filter by Course:</label>
-      <select id="course-filter" class="filter-select">
-        <option value="all">All Courses</option>
-      </select>
+    <!-- Two-column Responsive Layout: Main Column + Calendar Sidebar -->
+    <div class="content-layout">
+
+      <!-- Left / Main Column: Filter and Assignment Sections -->
+      <div class="main-column">
+        <!-- Filter by Course Bar -->
+        <div class="filter-bar">
+          <label for="course-filter" class="filter-label">Filter by Course:</label>
+          <select id="course-filter" class="filter-select">
+            <option value="all">All Courses</option>
+          </select>
+        </div>
+
+        <!-- Empty State Welcome Box (Shown when no assignments exist at all) -->
+        <div id="welcome-empty-state" class="welcome-empty-state" style="display: none;">
+          <h3>No assignments yet</h3>
+          <p>Use the form above to add your coursework, or click <strong>Load Sample Data</strong> to explore.</p>
+        </div>
+
+        <!-- Main Content: Assignment Sections -->
+        <main id="main-content">
+          <!-- Section 0: Overdue (Only visible when overdue items exist) -->
+          <section class="section section-overdue" id="section-overdue" style="display: none;">
+            <h2 class="section-title">
+              Overdue
+              <span class="section-count" id="count-overdue">0</span>
+            </h2>
+            <div class="cards-container" id="cards-overdue"></div>
+          </section>
+
+          <!-- Section 1: Today -->
+          <section class="section" id="section-today">
+            <h2 class="section-title">
+              Today
+              <span class="section-count" id="count-today">0</span>
+            </h2>
+            <div class="cards-container" id="cards-today"></div>
+          </section>
+
+          <!-- Section 2: This Week -->
+          <section class="section" id="section-this-week">
+            <h2 class="section-title">
+              This Week
+              <span class="section-count" id="count-this-week">0</span>
+            </h2>
+            <div class="cards-container" id="cards-this-week"></div>
+          </section>
+
+          <!-- Section 3: Later -->
+          <section class="section" id="section-later">
+            <h2 class="section-title">
+              Later
+              <span class="section-count" id="count-later">0</span>
+            </h2>
+            <div class="cards-container" id="cards-later"></div>
+          </section>
+        </main>
+      </div>
+
+      <!-- Right / Sidebar Column: Month Calendar -->
+      <aside class="calendar-sidebar" id="calendar-sidebar">
+        <div class="calendar-card">
+          <!-- Calendar Header & Navigation Controls -->
+          <div class="calendar-header">
+            <h3 class="calendar-month-title" id="calendar-month-title"></h3>
+            <div class="calendar-nav-buttons">
+              <button type="button" class="btn-cal-nav" id="calendar-prev-btn" aria-label="Previous month">&lt;</button>
+              <button type="button" class="btn-cal-nav btn-cal-today" id="calendar-today-btn">Today</button>
+              <button type="button" class="btn-cal-nav" id="calendar-next-btn" aria-label="Next month">&gt;</button>
+            </div>
+          </div>
+
+          <!-- Sunday-first Weekday Headers -->
+          <div class="calendar-weekdays" aria-hidden="true">
+            <span>Sun</span>
+            <span>Mon</span>
+            <span>Tue</span>
+            <span>Wed</span>
+            <span>Thu</span>
+            <span>Fri</span>
+            <span>Sat</span>
+          </div>
+
+          <!-- 42-day Month Grid -->
+          <div class="calendar-grid" id="calendar-grid"></div>
+
+          <!-- Selected Day Coursework Details -->
+          <div class="calendar-selected-details" id="calendar-selected-details"></div>
+        </div>
+      </aside>
+
     </div>
-
-    <!-- Empty State Welcome Box (Shown when no assignments exist at all) -->
-    <div id="welcome-empty-state" class="welcome-empty-state" style="display: none;">
-      <h3>No assignments yet</h3>
-      <p>Use the form above to add your coursework, or click <strong>Load Sample Data</strong> to explore.</p>
-    </div>
-
-    <!-- Main Content: Assignment Sections -->
-    <main id="main-content">
-      <!-- Section 0: Overdue (Only visible when overdue items exist) -->
-      <section class="section section-overdue" id="section-overdue" style="display: none;">
-        <h2 class="section-title">
-          Overdue
-          <span class="section-count" id="count-overdue">0</span>
-        </h2>
-        <div class="cards-container" id="cards-overdue"></div>
-      </section>
-
-      <!-- Section 1: Today -->
-      <section class="section" id="section-today">
-        <h2 class="section-title">
-          Today
-          <span class="section-count" id="count-today">0</span>
-        </h2>
-        <div class="cards-container" id="cards-today"></div>
-      </section>
-
-      <!-- Section 2: This Week -->
-      <section class="section" id="section-this-week">
-        <h2 class="section-title">
-          This Week
-          <span class="section-count" id="count-this-week">0</span>
-        </h2>
-        <div class="cards-container" id="cards-this-week"></div>
-      </section>
-
-      <!-- Section 3: Later -->
-      <section class="section" id="section-later">
-        <h2 class="section-title">
-          Later
-          <span class="section-count" id="count-later">0</span>
-        </h2>
-        <div class="cards-container" id="cards-later"></div>
-      </section>
-    </main>
 
   </div>
 
-  <!-- Scripts: Sample Data first, Storage helper second, App logic third -->
+  <!-- Scripts: Sample Data, Storage, Calendar, and App Logic -->
   <script src="data/assignments.js"></script>
   <script src="storage.js"></script>
+  <script src="calendar.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
