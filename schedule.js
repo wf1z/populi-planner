@@ -226,19 +226,20 @@ function renderWeeklyGrid(classes) {
       block.style.height = `${heightPercent}%`;
       block.style.width = `calc(${widthPercent}% - 2px)`;
       block.style.left = `calc(${leftPercent}% + 1px)`;
-      block.style.backgroundColor = getCourseColorVariable(item.courseCode);
+      const course = getCourseById(item.courseId);
+      block.style.backgroundColor = getCourseColorVariable(course.colorNumber);
 
       const timeRangeStr = `${format12HourTime(item.startTime)} - ${format12HourTime(item.endTime)}`;
-      block.title = `${item.courseCode} - ${item.courseName}\n${timeRangeStr}${item.location ? `\nLocation: ${item.location}` : ""}`;
+      block.title = `${course.code} - ${course.name}\n${timeRangeStr}${item.location ? `\nLocation: ${item.location}` : ""}`;
 
       // Render block contents safely using textContent
       const codeSpan = document.createElement("span");
       codeSpan.className = "class-block-code";
-      codeSpan.textContent = item.courseCode;
+      codeSpan.textContent = course.code;
 
       const titleSpan = document.createElement("span");
       titleSpan.className = "class-block-title";
-      titleSpan.textContent = item.courseName;
+      titleSpan.textContent = course.name;
 
       const timeSpan = document.createElement("span");
       timeSpan.className = "class-block-time";
@@ -303,21 +304,23 @@ function renderUnscheduledSection(classes) {
     const card = document.createElement("article");
     card.className = "meeting-card";
 
+    const course = getCourseById(item.courseId);
+
     // Header: Course code tag + color pill
     const cardHeader = document.createElement("div");
     cardHeader.className = "meeting-card-header";
 
     const tag = document.createElement("span");
     tag.className = "course-tag";
-    tag.textContent = item.courseCode;
-    tag.style.borderLeft = `4px solid ${getCourseColorVariable(item.courseCode)}`;
+    tag.textContent = course.code;
+    tag.style.borderLeft = `4px solid ${getCourseColorVariable(course.colorNumber)}`;
 
     cardHeader.appendChild(tag);
 
     // Title
     const cardTitle = document.createElement("h4");
     cardTitle.className = "meeting-card-title";
-    cardTitle.textContent = item.courseName;
+    cardTitle.textContent = course.name;
 
     // Details / Notes
     const details = document.createElement("div");
@@ -350,7 +353,7 @@ function renderUnscheduledSection(classes) {
     deleteBtn.className = "btn-card-action btn-card-delete";
     deleteBtn.textContent = "Delete";
     deleteBtn.addEventListener("click", () => {
-      if (confirm(`Are you sure you want to delete class meeting "${item.courseCode} - ${item.courseName}"?`)) {
+      if (confirm(`Are you sure you want to delete class meeting "${course.code} - ${course.name}"?`)) {
         deleteClassMeeting(item.id);
         if (typeof window.renderApp === "function") {
           window.renderApp();
@@ -414,8 +417,7 @@ function renderMeetingsList(classes) {
   grid.className = "meetings-grid";
 
   classes.forEach(item => {
-    const card = document.createElement("article");
-    card.className = "meeting-card";
+    const course = getCourseById(item.courseId);
 
     // Header: Course code tag + color pill
     const cardHeader = document.createElement("div");
@@ -423,15 +425,15 @@ function renderMeetingsList(classes) {
 
     const tag = document.createElement("span");
     tag.className = "course-tag";
-    tag.textContent = item.courseCode;
-    tag.style.borderLeft = `4px solid ${getCourseColorVariable(item.courseCode)}`;
+    tag.textContent = course.code;
+    tag.style.borderLeft = `4px solid ${getCourseColorVariable(course.colorNumber)}`;
 
     cardHeader.appendChild(tag);
 
     // Title
     const cardTitle = document.createElement("h4");
     cardTitle.className = "meeting-card-title";
-    cardTitle.textContent = item.courseName;
+    cardTitle.textContent = course.name;
 
     // Days & Time details
     const details = document.createElement("div");
@@ -480,7 +482,7 @@ function renderMeetingsList(classes) {
     deleteBtn.className = "btn-card-action btn-card-delete";
     deleteBtn.textContent = "Delete";
     deleteBtn.addEventListener("click", () => {
-      if (confirm(`Are you sure you want to delete class meeting "${item.courseCode} - ${item.courseName}"?`)) {
+      if (confirm(`Are you sure you want to delete class meeting "${course.code} - ${course.name}"?`)) {
         deleteClassMeeting(item.id);
         if (typeof window.renderApp === "function") {
           window.renderApp();
@@ -561,16 +563,17 @@ function openClassDialog(mode, meeting = null) {
     // Match course dropdown
     let matched = false;
     for (let i = 0; i < courseSelect.options.length; i++) {
-      if (courseSelect.options[i].value === meeting.courseCode) {
+      if (courseSelect.options[i].value === meeting.courseId) {
         courseSelect.selectedIndex = i;
         matched = true;
         break;
       }
     }
     if (!matched) {
+      const course = getCourseById(meeting.courseId);
       courseSelect.value = "__NEW__";
-      document.getElementById("new-class-course-code").value = meeting.courseCode;
-      document.getElementById("new-class-course-name").value = meeting.courseName || "";
+      document.getElementById("new-class-course-code").value = course.code || "";
+      document.getElementById("new-class-course-name").value = (course.name !== course.code) ? (course.name || "") : "";
     }
   } else {
     currentEditingClassId = null;
@@ -620,30 +623,41 @@ function getValidatedClassValues() {
   const location = document.getElementById("class-location").value.trim();
   const errorBox = document.getElementById("class-form-error");
 
-  let courseCode = "";
-  let courseName = "";
+  let courseId = "";
 
   if (courseSelect.value === "__NEW__") {
-    courseCode = normalizeCourseCode(document.getElementById("new-class-course-code").value);
-    courseName = document.getElementById("new-class-course-name").value.trim() || courseCode;
-    if (!courseCode) {
+    const rawCode = document.getElementById("new-class-course-code").value;
+    const cleanCode = normalizeCourseCode(rawCode);
+    const rawName = document.getElementById("new-class-course-name").value.trim();
+    if (!cleanCode) {
       showClassError("Please enter a course code.");
       return null;
     }
+    const courses = getStoredCourses();
+    const existing = courses.find(c => normalizeCourseCode(c.code) === cleanCode);
+    if (existing) {
+      if (rawName && (!existing.name || existing.name === cleanCode)) {
+        existing.name = rawName;
+        saveStoredCourses(courses);
+      }
+      courseId = existing.id;
+    } else {
+      const created = addCourse({ code: cleanCode, name: rawName || cleanCode });
+      courseId = created.id;
+    }
   } else {
-    courseCode = normalizeCourseCode(courseSelect.value);
-    const assignments = getStoredAssignments();
-    const classes = getStoredClasses();
-    const match = [...assignments, ...classes].find(item => normalizeCourseCode(item.courseCode) === courseCode);
-    courseName = match ? (match.courseName || courseCode) : courseCode;
+    courseId = courseSelect.value;
+    if (!courseId) {
+      showClassError("Please select a course.");
+      return null;
+    }
   }
 
   // If unscheduled, skip day selection and time validation
   if (isUnscheduled) {
     errorBox.style.display = "none";
     return {
-      courseCode,
-      courseName,
+      courseId,
       days: [],
       startTime: null,
       endTime: null,
@@ -677,8 +691,7 @@ function getValidatedClassValues() {
 
   errorBox.style.display = "none";
   return {
-    courseCode,
-    courseName,
+    courseId,
     days: selectedDays,
     startTime,
     endTime,
@@ -735,18 +748,20 @@ function handleClassSaveAndAddAnother() {
   }
 }
 
-// Syncs shared courses between assignments and classes into the class dialog select dropdown.
-function syncClassCourseDropdown(allSharedCourses, selectedVal) {
+// Syncs courses into the class dialog select dropdown.
+function syncClassCourseDropdown(coursesList, selectedVal) {
   const select = document.getElementById("class-course-select");
   if (!select) return;
 
   const currentVal = selectedVal || select.value;
   select.innerHTML = "";
 
-  allSharedCourses.forEach((name, code) => {
+  const courses = coursesList || getStoredCourses();
+
+  courses.forEach(course => {
     const opt = document.createElement("option");
-    opt.value = code;
-    opt.textContent = `${code} - ${name}`;
+    opt.value = course.id;
+    opt.textContent = `${course.code} - ${course.name}`;
     select.appendChild(opt);
   });
 
@@ -755,9 +770,9 @@ function syncClassCourseDropdown(allSharedCourses, selectedVal) {
   addCustomOption.textContent = "+ Add New Course...";
   select.appendChild(addCustomOption);
 
-  if (currentVal && (allSharedCourses.has(currentVal) || currentVal === "__NEW__")) {
+  if (currentVal && (courses.some(c => c.id === currentVal) || currentVal === "__NEW__")) {
     select.value = currentVal;
-  } else if (allSharedCourses.size > 0) {
+  } else if (courses.length > 0) {
     select.selectedIndex = 0;
   } else {
     select.value = "__NEW__";

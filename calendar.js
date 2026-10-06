@@ -133,10 +133,12 @@ function renderSelectedDayPanel(dateKey, assignmentsMap) {
     const info = document.createElement("div");
     info.className = "selected-day-item-info";
 
+    const course = getCourseById(assignment.courseId);
+
     const courseTag = document.createElement("span");
     courseTag.className = "course-tag";
-    courseTag.textContent = assignment.courseCode;
-    courseTag.title = assignment.courseName || assignment.courseCode;
+    courseTag.textContent = course.code;
+    courseTag.title = course.name || course.code;
 
     const titleSpan = document.createElement("span");
     titleSpan.className = "selected-item-title";

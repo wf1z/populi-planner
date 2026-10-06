@@ -13,16 +13,56 @@ function getRelativeDateString(daysOffset) {
   return formatLocalYYYYMMDD(date);
 }
 
-// Builds fresh sample assignments relative to today's date so sections are never stale.
-window.getFreshSampleAssignments = function () {
+// Sample course blueprint definitions.
+window.getSampleCourseDefinitions = function () {
+  return [
+    { code: "THEO 201", name: "Systematic Theology I", defaultColor: 1 },
+    { code: "BIBL 110", name: "Old Testament Survey", defaultColor: 2 },
+    { code: "MIN 305", name: "Pastoral Ministry & Leadership", defaultColor: 3 },
+    { code: "CHAP 100", name: "College Chapel", defaultColor: 4 }
+  ];
+};
+
+// Reuses existing course records when codes match, or creates new course records.
+window.ensureSampleCourses = function () {
+  const currentCourses = getStoredCourses();
+  const sampleDefs = window.getSampleCourseDefinitions();
+  const codeToCourseMap = {};
+
+  sampleDefs.forEach(def => {
+    const cleanCode = normalizeCourseCode(def.code);
+    let match = currentCourses.find(c => normalizeCourseCode(c.code) === cleanCode);
+    if (!match) {
+      match = {
+        id: generateUniqueId("course"),
+        code: cleanCode,
+        name: def.name,
+        colorNumber: allocateColorNumber(currentCourses),
+        source: "sample"
+      };
+      currentCourses.push(match);
+    }
+    codeToCourseMap[cleanCode] = match;
+  });
+
+  saveStoredCourses(currentCourses);
+  return codeToCourseMap;
+};
+
+// Builds fresh sample assignments relative to today's date linked via courseId.
+window.getFreshSampleAssignments = function (courseMap = null) {
+  const map = courseMap || window.ensureSampleCourses();
   const now = Date.now();
+
+  const theoId = map["THEO 201"].id;
+  const biblId = map["BIBL 110"].id;
+  const minId = map["MIN 305"].id;
 
   return [
     // --- OVERDUE (-2 days) ---
     {
       id: "sample-overdue-1",
-      courseCode: "THEO 201",
-      courseName: "Systematic Theology I",
+      courseId: theoId,
       title: "Syllabus Acknowledgement & Academic Integrity Statement",
       dueDate: getRelativeDateString(-2),
       planned: false,
@@ -35,8 +75,7 @@ window.getFreshSampleAssignments = function () {
     // --- TODAY (0 days) ---
     {
       id: "sample-today-1",
-      courseCode: "THEO 201",
-      courseName: "Systematic Theology I",
+      courseId: theoId,
       title: "Weekly Reading Reflection: Trinity & Ecclesiology",
       dueDate: getRelativeDateString(0),
       planned: false,
@@ -47,8 +86,7 @@ window.getFreshSampleAssignments = function () {
     },
     {
       id: "sample-today-2",
-      courseCode: "BIBL 110",
-      courseName: "Old Testament Survey",
+      courseId: biblId,
       title: "Pentateuch Reading & Concept Quiz",
       dueDate: getRelativeDateString(0),
       planned: false,
@@ -59,8 +97,7 @@ window.getFreshSampleAssignments = function () {
     },
     {
       id: "sample-today-3",
-      courseCode: "MIN 305",
-      courseName: "Pastoral Ministry & Leadership",
+      courseId: minId,
       title: "Hospital Care Visitation Case Analysis",
       dueDate: getRelativeDateString(0),
       planned: false,
@@ -73,8 +110,7 @@ window.getFreshSampleAssignments = function () {
     // --- THIS WEEK (+2 to +6 days) ---
     {
       id: "sample-week-1",
-      courseCode: "BIBL 110",
-      courseName: "Old Testament Survey",
+      courseId: biblId,
       title: "Historical Books Essay Outline",
       dueDate: getRelativeDateString(2),
       planned: false,
@@ -85,8 +121,7 @@ window.getFreshSampleAssignments = function () {
     },
     {
       id: "sample-week-2",
-      courseCode: "THEO 201",
-      courseName: "Systematic Theology I",
+      courseId: theoId,
       title: "Christology Paper Rough Draft",
       dueDate: getRelativeDateString(4),
       planned: false,
@@ -97,8 +132,7 @@ window.getFreshSampleAssignments = function () {
     },
     {
       id: "sample-week-3",
-      courseCode: "MIN 305",
-      courseName: "Pastoral Ministry & Leadership",
+      courseId: minId,
       title: "Sermon Outline: Expository Preaching on Beatitudes",
       dueDate: getRelativeDateString(5),
       planned: false,
@@ -109,8 +143,7 @@ window.getFreshSampleAssignments = function () {
     },
     {
       id: "sample-week-4",
-      courseCode: "BIBL 110",
-      courseName: "Old Testament Survey",
+      courseId: biblId,
       title: "Passage Recitation & Context Analysis: Isaiah 53",
       dueDate: getRelativeDateString(6),
       planned: false,
@@ -123,8 +156,7 @@ window.getFreshSampleAssignments = function () {
     // --- LATER (+12 to +21 days) ---
     {
       id: "sample-later-1",
-      courseCode: "THEO 201",
-      courseName: "Systematic Theology I",
+      courseId: theoId,
       title: "Theological Synthesis & Final Integrative Paper",
       dueDate: getRelativeDateString(12),
       planned: false,
@@ -135,8 +167,7 @@ window.getFreshSampleAssignments = function () {
     },
     {
       id: "sample-later-2",
-      courseCode: "MIN 305",
-      courseName: "Pastoral Ministry & Leadership",
+      courseId: minId,
       title: "Community Outreach Practicum Ministry Log",
       dueDate: getRelativeDateString(15),
       planned: false,
@@ -147,8 +178,7 @@ window.getFreshSampleAssignments = function () {
     },
     {
       id: "sample-later-3",
-      courseCode: "BIBL 110",
-      courseName: "Old Testament Survey",
+      courseId: biblId,
       title: "Covenant Theology Research Paper",
       dueDate: getRelativeDateString(21),
       planned: false,
@@ -160,33 +190,39 @@ window.getFreshSampleAssignments = function () {
   ];
 };
 
-// Builds fresh sample class meetings for the sample courses.
-window.getFreshSampleClasses = function () {
+// Builds fresh sample class meetings for the sample courses linked via courseId.
+window.getFreshSampleClasses = function (courseMap = null) {
+  const map = courseMap || window.ensureSampleCourses();
+
+  const theoId = map["THEO 201"].id;
+  const biblId = map["BIBL 110"].id;
+  const minId = map["MIN 305"].id;
+  const chapelId = map["CHAP 100"].id;
+
   return [
     {
       id: "sample-class-1",
-      courseCode: "THEO 201",
-      courseName: "Systematic Theology I",
+      courseId: theoId,
       days: [1, 3, 5], // Monday, Wednesday, Friday
       startTime: "09:00",
       endTime: "10:15",
       location: "Chapel Hall 102",
-      source: "sample"
+      source: "sample",
+      unscheduled: false
     },
     {
       id: "sample-class-2",
-      courseCode: "BIBL 110",
-      courseName: "Old Testament Survey",
+      courseId: biblId,
       days: [2, 4], // Tuesday, Thursday
       startTime: "10:30",
       endTime: "11:45",
       location: "Academic Center 204",
-      source: "sample"
+      source: "sample",
+      unscheduled: false
     },
     {
       id: "sample-class-3",
-      courseCode: "MIN 305",
-      courseName: "Pastoral Ministry & Leadership",
+      courseId: minId,
       days: [1, 3], // Monday, Wednesday (overlaps with THEO 201 from 10:00 to 10:15)
       startTime: "10:00",
       endTime: "11:15",
@@ -196,8 +232,7 @@ window.getFreshSampleClasses = function () {
     },
     {
       id: "sample-class-chapel",
-      courseCode: "CHAP 100",
-      courseName: "College Chapel",
+      courseId: chapelId,
       days: [],
       startTime: null,
       endTime: null,

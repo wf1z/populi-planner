@@ -91,10 +91,12 @@ function createAssignmentCard(assignment) {
   const header = document.createElement("div");
   header.className = "card-header";
 
+  const course = getCourseById(assignment.courseId);
+
   const courseTag = document.createElement("span");
   courseTag.className = "course-tag";
-  courseTag.textContent = assignment.courseCode;
-  courseTag.title = assignment.courseName || assignment.courseCode;
+  courseTag.textContent = course.code;
+  courseTag.title = course.name || course.code;
   header.appendChild(courseTag);
 
   const badgeElement = createBadgeElement(assignment);
@@ -138,7 +140,7 @@ function createAssignmentCard(assignment) {
   const dueInfo = document.createElement("p");
   dueInfo.className = "card-due-date";
   const formattedDueDate = formatDisplayDate(assignment.dueDate);
-  const courseFullName = assignment.courseName ? ` • ${assignment.courseName}` : "";
+  const courseFullName = (course.name && course.name !== course.code) ? ` • ${course.name}` : "";
   dueInfo.textContent = `Due: ${formattedDueDate}${courseFullName}`;
 
   cardMain.appendChild(header);
@@ -173,41 +175,26 @@ function renderSection(containerId, countId, itemsList) {
   });
 }
 
-// Aggregates and synchronizes shared courses across assignments, classes, and form dropdowns.
-function syncAllCourseDropdowns(assignments, classes) {
+// Synchronizes course dropdowns across filter, assignment dialog, and schedule dialog.
+function syncAllCourseDropdowns() {
   const courseFilter = document.getElementById("course-filter");
   const formCourseSelect = document.getElementById("form-course");
 
   const currentFilterValue = courseFilter ? courseFilter.value : "all";
   const currentFormValue = formCourseSelect ? formCourseSelect.value : null;
 
-  // Gather normalized course map from BOTH assignments and classes
-  const courseMap = new Map();
-
-  assignments.forEach(item => {
-    const code = normalizeCourseCode(item.courseCode);
-    if (code && !courseMap.has(code)) {
-      courseMap.set(code, item.courseName || code);
-    }
-  });
-
-  classes.forEach(item => {
-    const code = normalizeCourseCode(item.courseCode);
-    if (code && !courseMap.has(code)) {
-      courseMap.set(code, item.courseName || code);
-    }
-  });
+  const courses = getStoredCourses().sort((a, b) => a.code.localeCompare(b.code, undefined, { sensitivity: "base" }));
 
   // Rebuild course filter dropdown
   if (courseFilter) {
     courseFilter.innerHTML = '<option value="all">All Courses</option>';
-    courseMap.forEach((name, code) => {
+    courses.forEach(course => {
       const opt = document.createElement("option");
-      opt.value = code;
-      opt.textContent = code;
+      opt.value = course.id;
+      opt.textContent = course.code;
       courseFilter.appendChild(opt);
     });
-    if (courseMap.has(currentFilterValue)) {
+    if (currentFilterValue === "all" || courses.some(c => c.id === currentFilterValue)) {
       courseFilter.value = currentFilterValue;
     } else {
       courseFilter.value = "all";
@@ -217,10 +204,10 @@ function syncAllCourseDropdowns(assignments, classes) {
   // Rebuild assignment form course dropdown
   if (formCourseSelect) {
     formCourseSelect.innerHTML = "";
-    courseMap.forEach((name, code) => {
+    courses.forEach(course => {
       const opt = document.createElement("option");
-      opt.value = code;
-      opt.textContent = `${code} - ${name}`;
+      opt.value = course.id;
+      opt.textContent = `${course.code} - ${course.name}`;
       formCourseSelect.appendChild(opt);
     });
 
@@ -229,9 +216,9 @@ function syncAllCourseDropdowns(assignments, classes) {
     addCustomOption.textContent = "+ Add New Course...";
     formCourseSelect.appendChild(addCustomOption);
 
-    if (currentFormValue && (courseMap.has(currentFormValue) || currentFormValue === "__NEW__")) {
+    if (currentFormValue && (courses.some(c => c.id === currentFormValue) || currentFormValue === "__NEW__")) {
       formCourseSelect.value = currentFormValue;
-    } else if (courseMap.size > 0) {
+    } else if (courses.length > 0) {
       formCourseSelect.selectedIndex = 0;
     } else {
       formCourseSelect.value = "__NEW__";
@@ -242,7 +229,7 @@ function syncAllCourseDropdowns(assignments, classes) {
 
   // Sync to class dialog dropdown in schedule.js
   if (typeof window.syncClassCourseDropdown === "function") {
-    window.syncClassCourseDropdown(courseMap);
+    window.syncClassCourseDropdown(courses);
   }
 }
 
@@ -287,16 +274,17 @@ function openAssignmentDialog(mode, assignment = null) {
 
     let matched = false;
     for (let i = 0; i < courseSelect.options.length; i++) {
-      if (courseSelect.options[i].value === assignment.courseCode) {
+      if (courseSelect.options[i].value === assignment.courseId) {
         courseSelect.selectedIndex = i;
         matched = true;
         break;
       }
     }
     if (!matched) {
+      const course = getCourseById(assignment.courseId);
       courseSelect.value = "__NEW__";
-      document.getElementById("new-course-code").value = assignment.courseCode;
-      document.getElementById("new-course-name").value = assignment.courseName || "";
+      document.getElementById("new-course-code").value = course.code || "";
+      document.getElementById("new-course-name").value = (course.name !== course.code) ? (course.name || "") : "";
     }
   } else {
     currentEditingId = null;
@@ -334,22 +322,34 @@ function getValidatedFormValues() {
   const dueDate = document.getElementById("form-due-date").value;
   const courseSelectValue = document.getElementById("form-course").value;
 
-  let courseCode = "";
-  let courseName = "";
+  let courseId = "";
 
   if (courseSelectValue === "__NEW__") {
-    courseCode = normalizeCourseCode(document.getElementById("new-course-code").value);
-    courseName = document.getElementById("new-course-name").value.trim() || courseCode;
-    if (!courseCode) {
+    const rawCode = document.getElementById("new-course-code").value;
+    const cleanCode = normalizeCourseCode(rawCode);
+    const rawName = document.getElementById("new-course-name").value.trim();
+    if (!cleanCode) {
       alert("Please enter a course code.");
       return null;
     }
+    const courses = getStoredCourses();
+    const existing = courses.find(c => normalizeCourseCode(c.code) === cleanCode);
+    if (existing) {
+      if (rawName && (!existing.name || existing.name === cleanCode)) {
+        existing.name = rawName;
+        saveStoredCourses(courses);
+      }
+      courseId = existing.id;
+    } else {
+      const created = addCourse({ code: cleanCode, name: rawName || cleanCode });
+      courseId = created.id;
+    }
   } else {
-    courseCode = normalizeCourseCode(courseSelectValue);
-    const assignments = getStoredAssignments();
-    const classes = getStoredClasses();
-    const match = [...assignments, ...classes].find(item => normalizeCourseCode(item.courseCode) === courseCode);
-    courseName = match ? (match.courseName || courseCode) : courseCode;
+    courseId = courseSelectValue;
+    if (!courseId) {
+      alert("Please select a course.");
+      return null;
+    }
   }
 
   if (!title || !dueDate) {
@@ -357,7 +357,7 @@ function getValidatedFormValues() {
     return null;
   }
 
-  return { title, dueDate, courseCode, courseName };
+  return { title, dueDate, courseId };
 }
 
 // Handles standard form submission (Save) for adding or updating an assignment.
@@ -373,8 +373,7 @@ function handleFormSubmit(event) {
   } else {
     const isJustPosted = document.getElementById("form-just-posted").checked;
     addAssignment({
-      courseCode: values.courseCode,
-      courseName: values.courseName,
+      courseId: values.courseId,
       title: values.title,
       dueDate: values.dueDate,
       isJustPosted: isJustPosted
@@ -392,8 +391,7 @@ function handleSaveAndAddAnother() {
 
   const isJustPosted = document.getElementById("form-just-posted").checked;
   addAssignment({
-    courseCode: values.courseCode,
-    courseName: values.courseName,
+    courseId: values.courseId,
     title: values.title,
     dueDate: values.dueDate,
     isJustPosted: isJustPosted
@@ -455,7 +453,7 @@ function renderApp() {
   const welcomeBox = document.getElementById("welcome-empty-state");
 
   // Sync courses across assignments, classes, and dialog dropdowns
-  syncAllCourseDropdowns(allAssignments, allClasses);
+  syncAllCourseDropdowns();
 
   // Show welcome state if no assignments exist at all
   if (allAssignments.length === 0) {
@@ -466,7 +464,7 @@ function renderApp() {
 
   // Filter items by course filter
   const filtered = allAssignments.filter(item => {
-    return selectedCourse === "all" || item.courseCode === selectedCourse;
+    return selectedCourse === "all" || item.courseId === selectedCourse;
   });
 
   // Buckets
@@ -545,6 +543,38 @@ window.renderApp = renderApp;
 
 // Connects toolbar, forms, modals, tabs, and initiates first render.
 document.addEventListener("DOMContentLoaded", function () {
+  // Safe data migration to Version 3
+  const migrationResult = runDataMigration();
+  if (!migrationResult.success) {
+    document.body.innerHTML = `
+      <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: var(--bg-color, #0f0d12); color: var(--text-main, #ffffff); font-family: var(--font-family, sans-serif); padding: 2rem;">
+        <div style="max-width: 540px; background: var(--card-bg, #1a1720); border: 1px solid var(--card-border, #2e2937); border-radius: 8px; padding: 2rem; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+          <h2 style="margin-top: 0; color: var(--danger-text, #fda4af);">Data Migration Error</h2>
+          <p style="color: var(--text-muted, #d4cdd9); line-height: 1.5;">We encountered an issue while upgrading your local data to Version 3. Your existing data has not been modified and has been preserved in a backup snapshot.</p>
+          <p style="color: var(--text-dim, #9a92a3); font-size: 0.9rem;">Error details: ${migrationResult.error || "Unknown error"}</p>
+          <div style="margin-top: 1.5rem;">
+            <button id="btn-download-migration-backup" style="background: var(--primary, #e0b8c8); color: var(--on-primary, #1a1720); border: none; padding: 0.6rem 1.2rem; border-radius: 6px; font-weight: 600; cursor: pointer;">Download my old data</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const downloadBtn = document.getElementById("btn-download-migration-backup");
+    if (downloadBtn) {
+      downloadBtn.addEventListener("click", () => {
+        const blob = new Blob([migrationResult.snapshotRaw || "{}"], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `populi-planner-pre-migration-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+    }
+    return;
+  }
+
   const assignmentDialog = document.getElementById("assignment-dialog");
 
   // Tab switching
@@ -605,15 +635,16 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    const freshAssignments = window.getFreshSampleAssignments ? window.getFreshSampleAssignments() : [];
-    const freshClasses = window.getFreshSampleClasses ? window.getFreshSampleClasses() : [];
+    const courseMap = window.ensureSampleCourses ? window.ensureSampleCourses() : null;
+    const freshAssignments = window.getFreshSampleAssignments ? window.getFreshSampleAssignments(courseMap) : [];
+    const freshClasses = window.getFreshSampleClasses ? window.getFreshSampleClasses(courseMap) : [];
 
     saveStoredAssignments(freshAssignments);
     saveStoredClasses(freshClasses);
     renderApp();
   });
 
-  // Toolbar: Clear All Data (clears assignments, classes, and course colors)
+  // Toolbar: Clear All Data (clears assignments, classes, and courses)
   document.getElementById("btn-clear-all").addEventListener("click", function () {
     if (confirm("Are you sure you want to clear ALL assignments, classes, and settings? This cannot be undone.")) {
       clearAllData();
@@ -645,18 +676,23 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
 
-      const countMsg = result.version === 2
-        ? `${result.assignments.length} assignments and ${result.classes.length} class meetings`
-        : `${result.assignments.length} assignments (Version 1 backup - existing class schedule will remain intact)`;
+      let countMsg = "";
+      if (result.version === 3) {
+        countMsg = `${result.courses.length} courses, ${result.assignments.length} assignments, and ${result.classes.length} class meetings (Version 3 backup)`;
+      } else if (result.version === 2) {
+        countMsg = `${result.courses.length} courses, ${result.assignments.length} assignments, and ${result.classes.length} class meetings (migrated from Version 2)`;
+      } else {
+        countMsg = `${result.assignments.length} assignments (migrated from Version 1 - existing classes will remain intact)`;
+      }
 
       if (confirm(`Valid backup found with ${countMsg}.\n\nImporting this backup will REPLACE corresponding data. Are you sure you want to proceed?`)) {
+        if (result.courses) {
+          saveStoredCourses(result.courses);
+        }
         saveStoredAssignments(result.assignments);
 
-        if (result.version === 2 && Array.isArray(result.classes)) {
+        if (Array.isArray(result.classes)) {
           saveStoredClasses(result.classes);
-        }
-        if (result.courseColors) {
-          saveCourseColorMap(result.courseColors);
         }
 
         renderApp();
