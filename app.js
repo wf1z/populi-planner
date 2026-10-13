@@ -424,9 +424,13 @@ function openCalendarDialog() {
   const pasteInput = document.getElementById("calendar-paste-textarea");
   const errorMsg = document.getElementById("calendar-error-msg");
   const previewTarget = document.getElementById("calendar-preview-target");
+  const inputGrid = document.querySelector(".ics-input-grid");
+  const dialogFooter = document.getElementById("calendar-dialog-footer");
 
   if (fileInput) fileInput.value = "";
   if (pasteInput) pasteInput.value = "";
+  if (inputGrid) inputGrid.style.display = "grid";
+  if (dialogFooter) dialogFooter.style.display = "flex";
   if (errorMsg) {
     errorMsg.style.display = "none";
     errorMsg.textContent = "";
@@ -450,9 +454,13 @@ function closeCalendarDialog() {
   const pasteInput = document.getElementById("calendar-paste-textarea");
   const errorMsg = document.getElementById("calendar-error-msg");
   const previewTarget = document.getElementById("calendar-preview-target");
+  const inputGrid = document.querySelector(".ics-input-grid");
+  const dialogFooter = document.getElementById("calendar-dialog-footer");
 
   if (fileInput) fileInput.value = "";
   if (pasteInput) pasteInput.value = "";
+  if (inputGrid) inputGrid.style.display = "grid";
+  if (dialogFooter) dialogFooter.style.display = "flex";
   if (errorMsg) {
     errorMsg.style.display = "none";
     errorMsg.textContent = "";
@@ -476,6 +484,12 @@ function closeCalendarDialog() {
 function showCalendarError(message) {
   const errorMsg = document.getElementById("calendar-error-msg");
   const previewTarget = document.getElementById("calendar-preview-target");
+  const inputGrid = document.querySelector(".ics-input-grid");
+  const dialogFooter = document.getElementById("calendar-dialog-footer");
+
+  if (inputGrid) inputGrid.style.display = "grid";
+  if (dialogFooter) dialogFooter.style.display = "flex";
+
   if (errorMsg) {
     errorMsg.textContent = message;
     errorMsg.style.display = "block";
@@ -487,10 +501,54 @@ function showCalendarError(message) {
   currentParsedCalendarResult = null;
 }
 
-// Safely parses calendar text and populates the Stage 1 preview table.
+// Handles transitioning from the preview screen to the confirmation summary screen.
+function handleReviewImport(parseResult, courseMappings, rowActions) {
+  const previewTarget = document.getElementById("calendar-preview-target");
+  const dialogFooter = document.getElementById("calendar-dialog-footer");
+  const inputGrid = document.querySelector(".ics-input-grid");
+
+  const importPlan = prepareImportPlan(parseResult, courseMappings, rowActions);
+
+  // Hide the raw input options and the outer preview dialog footer while reviewing the confirm summary
+  if (inputGrid) inputGrid.style.display = "none";
+  if (dialogFooter) dialogFooter.style.display = "none";
+
+  const onConfirm = () => {
+    executeImportPlan(importPlan);
+    closeCalendarDialog();
+    renderApp();
+  };
+
+  const onBack = () => {
+    if (inputGrid) inputGrid.style.display = "grid";
+    if (dialogFooter) dialogFooter.style.display = "flex";
+    if (previewTarget) {
+      previewTarget.innerHTML = "";
+      const previewDOM = buildCalendarPreviewDOM(parseResult, handleReviewImport, courseMappings, rowActions);
+      previewTarget.appendChild(previewDOM);
+    }
+  };
+
+  const onCancel = () => {
+    closeCalendarDialog();
+  };
+
+  const confirmDOM = buildConfirmSummaryDOM(importPlan, onConfirm, onBack, onCancel);
+  if (previewTarget) {
+    previewTarget.innerHTML = "";
+    previewTarget.appendChild(confirmDOM);
+  }
+}
+
+// Safely parses calendar text and populates the Stage 1/2 preview table and course mappings.
 function processCalendarText(rawText) {
   const errorMsg = document.getElementById("calendar-error-msg");
   const previewTarget = document.getElementById("calendar-preview-target");
+  const inputGrid = document.querySelector(".ics-input-grid");
+  const dialogFooter = document.getElementById("calendar-dialog-footer");
+
+  if (inputGrid) inputGrid.style.display = "grid";
+  if (dialogFooter) dialogFooter.style.display = "flex";
 
   if (!rawText || !rawText.trim()) {
     if (errorMsg) {
@@ -522,7 +580,7 @@ function processCalendarText(rawText) {
         noEventsMsg.textContent = "No VEVENT or VTODO components found in this calendar file.";
         previewTarget.appendChild(noEventsMsg);
       } else {
-        const previewDOM = buildCalendarPreviewDOM(result);
+        const previewDOM = buildCalendarPreviewDOM(result, handleReviewImport);
         previewTarget.appendChild(previewDOM);
       }
       previewTarget.style.display = "block";
@@ -850,6 +908,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (Array.isArray(result.classes)) {
           saveStoredClasses(result.classes);
+        }
+
+        if (Array.isArray(result.ignoredUIDs)) {
+          saveIgnoredUIDs(result.ignoredUIDs);
         }
 
         renderApp();

@@ -203,18 +203,18 @@ A clean, dark-mode, at-a-glance planner for college students that highlights upc
 
 ---
 
-## 📅 Stage 1: Populi Calendar (.ics) Import (Read & Preview Only)
+## 📅 Populi Calendar (.ics) Import (Stages 1 & 2)
 
-Stage 1 provides calendar file parsing, line unfolding, component analysis, and a structured preview table without saving or modifying any data in `localStorage`.
+Import calendar files (`.ics`) exported from Populi to automatically populate your course catalog, weekly class schedule, and coursework planner without tedious manual entry.
 
 ### 1. Security & Privacy Notice
 > [!IMPORTANT]
 > **Calendar Data Privacy**: Calendar files (`.ics`) exported from Populi contain real personal student schedule data, including courses, professors, meeting locations, and assignments.
 > - **`.gitignore` protection**: `*.ics` is ignored in `.gitignore` to prevent committing calendar files to version control.
-> - **Zero server transmissions**: All `.ics` file reading, parsing, and rendering happens entirely inside your local browser.
-> - **Zero persistence in Stage 1**: In Stage 1, all parsed event structures and raw file texts are stored purely in temporary browser memory and are completely cleared when the dialog closes.
+> - **Zero server transmissions**: All `.ics` file reading, parsing, mapping, and rendering happens 100% client-side inside your local browser.
+> - **Untrusted Text Rendering**: Every course title, assignment summary, meeting location, and raw debug string is rendered strictly via `textContent`, never `innerHTML`. No embedded links are parsed or executed.
 
-### 2. RFC 5545 Parsing Capabilities
+### 2. Stage 1: RFC 5545 Parsing Capabilities
 - **Tolerant Line Unfolding**: Unfolds lines wrapped with CRLF/LF followed by a space or tab (`\r\n `, `\n\t`, etc.).
 - **Case-Insensitive Property & Quoted Parameter Parsing**: Handles property names and parameters regardless of case, including quoted parameter values (e.g. `TZID="America/Los_Angeles"`).
 - **Strict Local Date/Time Handling**:
@@ -230,120 +230,159 @@ Stage 1 provides calendar file parsing, line unfolding, component analysis, and 
   - Detects daylight saving clock shifts across the first 12 occurrences and displays a visible warning: `⚠️ times shift after clock change`.
   - Numbered weekdays (e.g. `1MO`) and non-weekly frequencies (e.g. `DAILY`, `MONTHLY`) are classified as `Unsupported`.
   - Events marked `STATUS:CANCELLED` or containing `RECURRENCE-ID` are classified as `Unsupported`.
-- **Untrusted Text Rendering**: Every title, location, description, and raw debug string is rendered exclusively via `textContent`, never `innerHTML`. No links are followed or executed.
+
+### 3. Stage 2: Map & Import Architecture
+- **Automatic Course Code Guessing**:
+  - Scans event summaries for standard course codes (e.g. `THEO 201`, `BIBL 110`, `MIN 305`).
+  - Guessed codes are normalized using `normalizeCourseCode` (trim, collapse spaces, uppercase).
+- **Shared Course Mappings Panel**:
+  - All events sharing a guessed code share a single mapping dropdown.
+  - Choose an existing course record or select `+ Create new course: <Code>`.
+  - When creating new courses, each course is allocated the first unused color from the 8-color palette (`--course-color-1` through `--course-color-8`).
+- **Action Selection**:
+  - For each event row, pick **Class meeting**, **Assignment / due date**, or **Skip**.
+  - Intelligent defaults: repeating events default to **Class meeting**, one-time events default to **Assignment**, unsupported / duplicates / previously skipped items default to **Skip**.
+  - **Quick Group Select Buttons**: One-click bulk buttons to map repeating items, one-time items, or skip all unsupported items.
+- **Occurrence Expansion for Repeating Assignments (Note 8)**:
+  - If a repeating event is mapped to **Assignment**, it is expanded into individual assignment records per occurrence date (excluding `EXDATE`s and respecting `UNTIL`/`COUNT`).
+  - Expanded assignments receive a deterministic `externalId` composed of `UID#YYYY-MM-DD` (e.g. `chapel-series@populi#2026-10-15`).
+  - Class meetings use `externalId = UID`.
+- **Duplicate Detection against Existing Planner Items (Note 9)**:
+  - Checks events against existing planner items by normalized course, normalized title (ignoring course prefix and punctuation), and due date.
+  - Detected duplicates display an **Already in your planner** badge, default to **Skip**, and link the calendar `externalId` to the existing assignment without creating a duplicate record.
+- **Remembering Skipped and Deleted Items (Note 10)**:
+  - Skipped event UIDs and deleted imported items (`deleteAssignment` / `deleteClassMeeting`) are saved in `localStorage` under `populi_ignored_uids`.
+  - On future re-imports, previously ignored items default to **Skip**.
+  - `populi_ignored_uids` is included in Version 3 JSON backups.
+- **In-Place Re-import Updates (Note 11)**:
+  - Re-importing a calendar file only updates an assignment's `dueDate` (recording `previousDueDate` and setting `lastChanged` timestamp), and a class meeting's `days`, `startTime`, `endTime`, and `location`.
+  - Never overwrites custom titles, courses, or `planned` checkbox state.
+  - Existing items no longer in the file remain untouched.
+- **Baseline Detection (Note 12)**:
+  - Baseline import is detected strictly by verifying that `no stored assignment or class meeting has source === "ics"`.
+  - On baseline import, `firstSeen` and `lastChanged` are set to `null` so no false "New" or "Due date changed" badges appear.
+  - On subsequent imports, newly added assignments receive a `firstSeen` timestamp, and shifted due dates receive a `lastChanged` timestamp.
+- **Pre-Save Confirmation Screen**:
+  - Displays a full breakdown before committing anything to storage:
+    - New courses to create (with color swatches).
+    - Class meetings to add and update (with exact day/time shifts).
+    - Assignments to add and due date changes highlighted.
+    - Safety and preservation metrics (linked duplicates, untouched missing items, remembered skips).
+  - Navigation options: **Back to Preview** (preserves all selections), **Cancel** (discards import), and **Confirm and Save**.
+  - Redraws immediately through `renderApp()`.
 
 ---
 
-## 🧪 How to Test Stage 1 (Calendar Import Preview)
+## 🧪 How to Test Stage 2 (Calendar Map & Import)
 
-### Test 1: Open the Calendar Import Dialog
+### Test 1: Open Dialog & Paste Sample Calendar Data
 1. Open `index.html` in your web browser.
-2. Verify you can open the **Import Populi Calendar** dialog from any of the three locations:
-   - Expand **Data & Backup tools** at the bottom of the Planner and click **Import Calendar**.
-   - Switch to the **Schedule** tab and click the **Import Calendar** button in the top right.
-   - Switch to the **Courses** tab and click the **Import Calendar** button in the top right.
-3. Observe the dialog appearance:
-   - Title: *"Import Populi Calendar (.ics)"*.
-   - A file picker (`Choose .ics file`) with a 2 MB / 2,000 event limit notice.
-   - A paste textarea (`Or paste calendar text`).
-   - A footer note indicating: *"Stage 1 Preview: Nothing is saved yet. In Stage 2, you will be able to map and import these events."*
-4. Test dialog closing:
-   - Click the **Close** button or the top-right `&times;` button.
-   - Click outside the dialog on the backdrop: verify it closes only if both `mousedown` and `click` occur on the backdrop.
-   - Reopen and press the **Esc** key: verify it closes and focus returns to the button that opened it.
-
-### Test 2: Paste Calendar Text to Preview Events
-1. Open the Calendar Import dialog.
-2. Copy and paste the following sample `.ics` snippet into the paste textarea:
+2. In the top bar, click the **Courses** tab (or **Schedule** tab) and click **Import Calendar**.
+3. Paste the following calendar snippet containing one class lecture, one chapel series, and one assignment:
    ```text
    BEGIN:VCALENDAR
    VERSION:2.0
    PRODID:-//Populi//Calendar//EN
-   BEGIN:VTIMEZONE
-   TZID:America/Los_Angeles
-   BEGIN:STANDARD
-   DTSTART:19701101T020000
-   RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
-   TZOFFSETFROM:-0700
-   TZOFFSETTO:-0800
-   END:STANDARD
-   END:VTIMEZONE
    BEGIN:VEVENT
    UID:class-theo201-fall2026@populi.co
    SUMMARY:THEO 201: Systematic Theology I
-   DTSTART;TZID="America/Los_Angeles":20261015T090000
-   DTEND;TZID="America/Los_Angeles":20261015T101500
-   RRULE:FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261215T235959Z
+   DTSTART:20261013T090000
+   DTEND:20261013T101500
+   RRULE:FREQ=WEEKLY;BYDAY=TU,TH;COUNT=6
    LOCATION:Chapel Hall 102
-   DESCRIPTION:Fall semester theology lecture
+   END:VEVENT
+   BEGIN:VEVENT
+   UID:chapel-series-fall2026@populi.co
+   SUMMARY:CHAP 100: Campus Chapel Gathering
+   DTSTART:20261014T100000
+   DTEND:20261014T110000
+   RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=4
+   LOCATION:Main Auditorium
    END:VEVENT
    BEGIN:VEVENT
    UID:assign-reading-theo201@populi.co
-   SUMMARY:THEO 201: Reading Reflection 5
+   SUMMARY:THEO 201: Reading Reflection 1
    DTSTART;VALUE=DATE:20261020
    LOCATION:Online
    END:VEVENT
-   BEGIN:VTODO
-   UID:todo-quiz-bibl110@populi.co
-   SUMMARY:BIBL 110: Pentateuch Review Quiz
-   DUE;VALUE=DATE:20261022
-   LOCATION:LMS Portal
-   END:VTODO
-   BEGIN:VEVENT
-   UID:cancelled-meeting-bibl@populi.co
-   SUMMARY:BIBL 110: Review Session (Cancelled)
-   DTSTART:20261023T140000Z
-   STATUS:CANCELLED
-   END:VEVENT
-   BEGIN:VEVENT
-   UID:recurrence-override-theo@populi.co
-   SUMMARY:THEO 201: Guest Lecturer Session
-   DTSTART:20261027T090000
-   RECURRENCE-ID:20261027T090000
-   END:VEVENT
    END:VCALENDAR
    ```
-3. Observe the rendered preview:
-   - **Summary Banner**: Displays `5 events found: 1 repeating, 2 one-time, 2 unsupported` and `Components in file: 4 VEVENT, 1 VTODO, 1 VTIMEZONE`.
-   - **Preview Table**:
-     - Row 1: `THEO 201: Systematic Theology I` | `Tue, Thu 09:00 - 10:15 (ends Dec 15)` | **Repeating** | `Chapel Hall 102`.
-     - Row 2: `THEO 201: Reading Reflection 5` | `Oct 20 (All day)` | **One-time** | `Online`.
-     - Row 3: `BIBL 110: Pentateuch Review Quiz` | `Oct 22 (All day)` | **One-time (Todo)** | `LMS Portal`.
-     - Row 4: `BIBL 110: Review Session (Cancelled)` | When formatted | **Cancelled** | `—`.
-     - Row 5: `THEO 201: Guest Lecturer Session` | When formatted | **Unsupported** | `—` with reason *"Changed single occurrence of a series (RECURRENCE-ID)"*.
-   - **Show raw details (first 5 events)** accordion:
-     - Click the accordion to expand it.
-     - Inspect the debug output for the events, including UID, parsed DTSTART/DTEND, raw RRULE, and first 3 calculated occurrence dates for repeating events.
+4. Observe the Preview UI:
+   - **Course Mappings**: Displays detected courses `THEO 201` and `CHAP 100` mapped to `+ Create new course`.
+   - **Table Rows**:
+     - `THEO 201: Systematic Theology I` defaults to **Class meeting**.
+     - `CHAP 100: Campus Chapel Gathering` defaults to **Class meeting**.
+     - `THEO 201: Reading Reflection 1` defaults to **Assignment / due date**.
 
-### Test 3: Test Clock Shift Warning
-1. Paste a repeating weekly event with UTC time across a Daylight Saving Time boundary:
+### Test 2: Repeating Event Mapped to Assignment (Note 8)
+1. On the row for `CHAP 100: Campus Chapel Gathering`, change the action dropdown from **Class meeting** to **Assignment / due date**.
+2. Click the **Review & Import...** button at the bottom:
+   - The confirmation summary appears.
+   - Headline displays: *"Import 1 class meeting and 5 assignments, create 2 courses"*.
+   - In the Assignments section, observe that `CHAP 100: Campus Chapel Gathering` was expanded into 4 individual assignments (one for each Wednesday in the series).
+3. Click **Back to Preview**:
+   - Verify all your course mappings and action choices were remembered.
+
+### Test 3: Baseline Import & Badge Verification (Note 12)
+1. Click **Review & Import...** again, then click **Confirm and Save**:
+   - The dialog closes and `renderApp()` redraws the page.
+2. Check the **Courses** tab:
+   - Both `THEO 201` and `CHAP 100` have been created with distinct palette colors.
+3. Check the **Schedule** tab:
+   - `THEO 201` appears on Tuesday and Thursday from 9:00 AM to 10:15 AM in `Chapel Hall 102`.
+4. Check the **Planner** tab:
+   - The assignments for `THEO 201` and `CHAP 100` are displayed.
+   - Notice that **no "New" badges appear** because this was the initial baseline import!
+
+### Test 4: Duplicate Detection & Linking (Note 9)
+1. Open the Calendar Import dialog again and paste the same calendar text as Test 1.
+2. In the preview table:
+   - Notice that `THEO 201: Reading Reflection 1` now displays the badge **Already in your planner** and its action default is set to **Skip**.
+3. Click **Review & Import...**:
+   - The summary indicates: *"1 assignment(s) already in your planner were linked to calendar IDs without creating duplicates."*
+
+### Test 5: In-Place Due Date & Class Time Shift on Re-Import (Note 11)
+1. In the Planner, check the checkbox on one `CHAP 100` assignment to mark it as **Planned**, and rename `THEO 201: Reading Reflection 1` to `THEO 201: Reading Reflection 1 (Finished Draft)`.
+2. Open the Calendar Import dialog and paste a modified calendar where the due date and class time shifted:
    ```text
    BEGIN:VCALENDAR
    VERSION:2.0
    BEGIN:VEVENT
-   UID:utc-dst-shift-class@populi.co
-   SUMMARY:MIN 305: Pastoral Ministry Seminar
-   DTSTART:20261015T160000Z
-   DTEND:20261015T171500Z
-   RRULE:FREQ=WEEKLY;BYDAY=TH;COUNT=10
-   LOCATION:Room 204
+   UID:class-theo201-fall2026@populi.co
+   SUMMARY:THEO 201: Systematic Theology I
+   DTSTART:20261013T093000
+   DTEND:20261013T104500
+   RRULE:FREQ=WEEKLY;BYDAY=TU,TH;COUNT=6
+   LOCATION:Room 205
+   END:VEVENT
+   BEGIN:VEVENT
+   UID:assign-reading-theo201@populi.co
+   SUMMARY:THEO 201: Reading Reflection 1
+   DTSTART;VALUE=DATE:20261022
+   LOCATION:Online
    END:VEVENT
    END:VCALENDAR
    ```
-2. If your computer's local timezone observes Daylight Saving Time (such as US Pacific / Eastern time, where the clock turns back 1 hour in early November):
-   - Notice the yellow pill: `⚠️ times shift after clock change`.
+3. Set the action for `THEO 201: Reading Reflection 1` to **Assignment / due date** and click **Review & Import...**:
+   - Review the confirmation screen:
+     - Class Meetings: highlights time shift to `09:30 - 10:45` and location `Room 205`.
+     - Assignments: highlights *"Changed due date: 'THEO 201: Reading Reflection 1 (Finished Draft)' was 2026-10-20 → now 2026-10-22"*.
+4. Click **Confirm and Save**:
+   - In the **Planner**: notice your custom title `(Finished Draft)` and planned checkbox remain intact, the due date updated to Oct 22, and a **"Due date changed"** badge is now visible!
+   - In the **Schedule**: the meeting block moved to 9:30 AM – 10:45 AM in Room 205.
 
-### Test 4: Safety & Limits Verification
-1. Verify that closing the dialog clears the text paste box, file input, and preview DOM.
-2. Reopen the dialog: observe that the form is clean and ready for a new file.
-3. Check `populi_assignments` and `populi_classes` in your browser's Developer Tools (`Application > Local Storage`):
-   - Verify that **no data has been written or altered** in storage during Stage 1.
+### Test 6: Remembering Deleted Items (Note 10)
+1. In the Planner, delete one of the `CHAP 100` assignments.
+2. In the browser Developer Tools console or Local Storage:
+   - Check `localStorage.getItem("populi_ignored_uids")`: verify the deleted item's `externalId` is recorded.
+3. Re-import the original calendar:
+   - Notice the deleted item automatically defaults to **Skip** so it does not reappear unexpectedly.
 
 ---
 
 ## 🌿 Git Version Control Commands
 
-To commit Stage 1 to your Git repository, run these commands in your terminal:
+To commit Stage 2 to your Git repository, run these commands in your terminal:
 
 ```bash
 # 1. Navigate to the project folder
@@ -352,9 +391,9 @@ cd "C:\Users\supaw\Documents\populi-planner"
 # 2. Check changed and untracked files
 git status
 
-# 3. Stage all modified and new files (note: *.ics files are automatically ignored)
+# 3. Stage all modified files (note: *.ics files remain automatically ignored)
 git add .
 
 # 4. Commit your changes
-git commit -m "Implement Stage 1: Populi Calendar (.ics) parser and preview dialog with safety limits and local date decoding"
+git commit -m "Implement Stage 2: Populi Calendar (.ics) course mapping, occurrence expansion, duplicate detection, and in-place re-import"
 ```

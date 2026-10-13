@@ -639,12 +639,143 @@ function formatEventWhen(item) {
   return "No date specified";
 }
 
-// Builds the DOM preview table and collapsible raw details section strictly using textContent.
-function buildCalendarPreviewDOM(parseResult) {
+// --------------------------------------------------------------------------
+// STAGE 2: COURSE GUESSING, DUPLICATE DETECTION & IMPORT MAPPING
+// --------------------------------------------------------------------------
+
+// Guesses a course code from an event summary (e.g. "THEO 201" from "THEO 201: Systematic Theology I").
+function guessCourseCode(summary) {
+  if (!summary) return null;
+
+  // Match prefix pattern like "THEO 201" or "THEO201" or "BIBL 110"
+  const prefixMatch = summary.match(/^\s*([A-Za-z]{2,5})\s*(\d{3,4}[A-Za-z]?)\b/);
+  if (prefixMatch) {
+    return `${prefixMatch[1].toUpperCase()} ${prefixMatch[2].toUpperCase()}`;
+  }
+
+  // Look for any standard course code inside the title
+  const anyMatch = summary.match(/\b([A-Za-z]{2,5})\s*(\d{3,4}[A-Za-z]?)\b/);
+  if (anyMatch) {
+    return `${anyMatch[1].toUpperCase()} ${anyMatch[2].toUpperCase()}`;
+  }
+
+  return null;
+}
+
+// Strips the guessed course code prefix from an assignment title for clean duplicate comparison.
+function stripCoursePrefix(summary, guessedCode) {
+  if (!summary) return "";
+  if (!guessedCode) return summary.trim();
+  const pattern = new RegExp(`^\\s*${guessedCode.replace(/\s+/g, "\\s*")}\\s*[:\\-\\–]?\\s*`, "i");
+  const stripped = summary.replace(pattern, "").trim();
+  return stripped || summary.trim();
+}
+
+// Normalizes a title string for loose duplicate comparison (lowercase alphanumeric).
+function normalizeTitle(title) {
+  if (!title) return "";
+  return title
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Checks if an event matches an existing assignment in the planner.
+function findExistingAssignmentDuplicate(event, guessedCode, existingAssignments, existingCourses) {
+  if (!event || !event.dtStart || !event.dtStart.dateKey) return null;
+
+  // 1. Direct match on externalId
+  const byExternalId = existingAssignments.find(a => a.externalId === event.uid);
+  if (byExternalId) {
+    return byExternalId;
+  }
+
+  // 2. Fuzzy match on normalized course, due date, and normalized title
+  if (!guessedCode) return null;
+
+  const normalizedGuessed = normalizeCourseCode(guessedCode);
+  const matchingCourses = existingCourses.filter(c => normalizeCourseCode(c.code) === normalizedGuessed);
+  if (matchingCourses.length === 0) return null;
+
+  const matchingCourseIds = new Set(matchingCourses.map(c => c.id));
+  const eventDateKey = event.dtStart.dateKey;
+  const cleanSummary = normalizeTitle(event.summary);
+  const cleanStripped = normalizeTitle(stripCoursePrefix(event.summary, guessedCode));
+
+  for (const a of existingAssignments) {
+    if (matchingCourseIds.has(a.courseId) && a.dueDate === eventDateKey) {
+      const cleanExisting = normalizeTitle(a.title);
+      if (cleanExisting === cleanSummary || cleanExisting === cleanStripped) {
+        return a;
+      }
+    }
+  }
+
+  return null;
+}
+
+// Builds the DOM preview table, course mappings, group toggles, and review import action.
+function buildCalendarPreviewDOM(parseResult, onReviewImport, savedCourseMappings, savedRowActions) {
   const container = document.createElement("div");
   container.className = "ics-preview-container";
 
-  // 1. Overall Summary Line
+  const existingAssignments = typeof getStoredAssignments === "function" ? getStoredAssignments() : [];
+  const existingCourses = typeof getStoredCourses === "function" ? getStoredCourses() : [];
+  const ignoredUIDs = typeof getIgnoredUIDs === "function" ? new Set(getIgnoredUIDs()) : new Set();
+
+  // 1. Prepare course mapping state per unique detected code
+  const uniqueGuessedCodes = [];
+  const guessedCodeSet = new Set();
+
+  parseResult.events.forEach(item => {
+    item.guessedCode = guessCourseCode(item.summary) || "GENERAL";
+    if (!guessedCodeSet.has(item.guessedCode)) {
+      guessedCodeSet.add(item.guessedCode);
+      uniqueGuessedCodes.push(item.guessedCode);
+    }
+
+    // Check duplicate against existing assignments
+    const duplicateMatch = findExistingAssignmentDuplicate(item, item.guessedCode, existingAssignments, existingCourses);
+    if (duplicateMatch) {
+      item.isDuplicate = true;
+      item.matchedAssignmentId = duplicateMatch.id;
+    } else {
+      item.isDuplicate = false;
+      item.matchedAssignmentId = null;
+    }
+
+    item.isPreviouslyIgnored = ignoredUIDs.has(item.uid);
+  });
+
+  // Course mappings dictionary: code -> courseId (existing id or __NEW__:CODE)
+  const courseMappings = savedCourseMappings ? { ...savedCourseMappings } : {};
+  uniqueGuessedCodes.forEach(code => {
+    if (!courseMappings[code]) {
+      const matchedCourse = existingCourses.find(c => normalizeCourseCode(c.code) === normalizeCourseCode(code));
+      if (matchedCourse) {
+        courseMappings[code] = matchedCourse.id;
+      } else {
+        courseMappings[code] = `__NEW__:${code}`;
+      }
+    }
+  });
+
+  // Default row action choices
+  const rowActionChoices = savedRowActions ? [...savedRowActions] : parseResult.events.map(item => {
+    if (item.isDuplicate || item.isPreviouslyIgnored) {
+      return "skip";
+    }
+    if (item.eventType === "repeating") {
+      return "class";
+    }
+    if (item.eventType === "one-time") {
+      return "assignment";
+    }
+    return "skip";
+  });
+
+  // 2. Overall Summary Line
   const counts = {
     repeating: 0,
     oneTime: 0,
@@ -672,28 +803,152 @@ function buildCalendarPreviewDOM(parseResult) {
 
   container.appendChild(summaryHeader);
 
-  // 2. Events Preview Table
+  // 3. Course Mappings Section
+  if (uniqueGuessedCodes.length > 0) {
+    const mappingBox = document.createElement("div");
+    mappingBox.className = "ics-course-mappings-box";
+
+    const mappingTitle = document.createElement("h3");
+    mappingTitle.className = "ics-section-subtitle";
+    mappingTitle.textContent = "Course Mappings";
+    mappingBox.appendChild(mappingTitle);
+
+    const mappingDesc = document.createElement("p");
+    mappingDesc.className = "form-hint";
+    mappingDesc.textContent = "We detected the following courses in your calendar file. Choose an existing course or create a new one:";
+    mappingBox.appendChild(mappingDesc);
+
+    const mappingGrid = document.createElement("div");
+    mappingGrid.className = "ics-course-mappings-grid";
+
+    uniqueGuessedCodes.forEach(code => {
+      const row = document.createElement("div");
+      row.className = "ics-course-mapping-row";
+
+      const label = document.createElement("span");
+      label.className = "course-tag";
+      label.textContent = code;
+      row.appendChild(label);
+
+      const arrow = document.createElement("span");
+      arrow.className = "ics-mapping-arrow";
+      arrow.textContent = "→";
+      row.appendChild(arrow);
+
+      const select = document.createElement("select");
+      select.className = "form-select ics-course-select";
+
+      // Populate existing courses
+      existingCourses.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = `${c.code} - ${c.name}`;
+        if (c.id === courseMappings[code]) {
+          opt.selected = true;
+        }
+        select.appendChild(opt);
+      });
+
+      // New course creation option
+      const newOpt = document.createElement("option");
+      newOpt.value = `__NEW__:${code}`;
+      newOpt.textContent = `+ Create new course: ${code}`;
+      if (courseMappings[code] === `__NEW__:${code}`) {
+        newOpt.selected = true;
+      }
+      select.appendChild(newOpt);
+
+      select.addEventListener("change", function () {
+        courseMappings[code] = select.value;
+      });
+
+      row.appendChild(select);
+      mappingGrid.appendChild(row);
+    });
+
+    mappingBox.appendChild(mappingGrid);
+    container.appendChild(mappingBox);
+  }
+
+  // 4. Quick Group Action Controls
+  const groupActionsBox = document.createElement("div");
+  groupActionsBox.className = "ics-group-actions";
+
+  const groupLabel = document.createElement("span");
+  groupLabel.className = "ics-group-label";
+  groupLabel.textContent = "Quick select all in group:";
+  groupActionsBox.appendChild(groupLabel);
+
+  const btnGroupWrap = document.createElement("div");
+  btnGroupWrap.className = "ics-group-buttons";
+
+  // Repeating group actions
+  const btnAllRepeatingClass = document.createElement("button");
+  btnAllRepeatingClass.type = "button";
+  btnAllRepeatingClass.className = "btn-secondary btn-sm";
+  btnAllRepeatingClass.textContent = "Repeating → Class meeting";
+  btnAllRepeatingClass.addEventListener("click", () => setAllGroupAction("repeating", "class"));
+  btnGroupWrap.appendChild(btnAllRepeatingClass);
+
+  const btnAllRepeatingAssign = document.createElement("button");
+  btnAllRepeatingAssign.type = "button";
+  btnAllRepeatingAssign.className = "btn-secondary btn-sm";
+  btnAllRepeatingAssign.textContent = "Repeating → Assignment";
+  btnAllRepeatingAssign.addEventListener("click", () => setAllGroupAction("repeating", "assignment"));
+  btnGroupWrap.appendChild(btnAllRepeatingAssign);
+
+  // One-time group actions
+  const btnAllOnetimeAssign = document.createElement("button");
+  btnAllOnetimeAssign.type = "button";
+  btnAllOnetimeAssign.className = "btn-secondary btn-sm";
+  btnAllOnetimeAssign.textContent = "One-time → Assignment";
+  btnAllOnetimeAssign.addEventListener("click", () => setAllGroupAction("one-time", "assignment"));
+  btnGroupWrap.appendChild(btnAllOnetimeAssign);
+
+  const btnAllSkip = document.createElement("button");
+  btnAllSkip.type = "button";
+  btnAllSkip.className = "btn-secondary btn-sm";
+  btnAllSkip.textContent = "Skip all unsupported";
+  btnAllSkip.addEventListener("click", () => setAllGroupAction("unsupported", "skip"));
+  btnGroupWrap.appendChild(btnAllSkip);
+
+  groupActionsBox.appendChild(btnGroupWrap);
+  container.appendChild(groupActionsBox);
+
+  // Helper to bulk-change row actions
+  function setAllGroupAction(groupType, newAction) {
+    parseResult.events.forEach((item, idx) => {
+      if (item.eventType === groupType) {
+        rowActionChoices[idx] = newAction;
+        const select = table.querySelector(`select[data-row-idx="${idx}"]`);
+        if (select) {
+          select.value = newAction;
+        }
+      }
+    });
+  }
+
+  // 5. Events Preview Table with Action Selector
   const tableWrapper = document.createElement("div");
   tableWrapper.className = "ics-table-scroll";
 
   const table = document.createElement("table");
   table.className = "ics-preview-table";
 
-  // Table Header
   const thead = document.createElement("thead");
   const headerRow = document.createElement("tr");
 
   const thTitle = document.createElement("th");
-  thTitle.textContent = "Title";
+  thTitle.textContent = "Title & Course";
   headerRow.appendChild(thTitle);
 
   const thWhen = document.createElement("th");
   thWhen.textContent = "When";
   headerRow.appendChild(thWhen);
 
-  const thType = document.createElement("th");
-  thType.textContent = "Type";
-  headerRow.appendChild(thType);
+  const thAction = document.createElement("th");
+  thAction.textContent = "Action";
+  headerRow.appendChild(thAction);
 
   const thLocation = document.createElement("th");
   thLocation.textContent = "Location";
@@ -702,18 +957,34 @@ function buildCalendarPreviewDOM(parseResult) {
   thead.appendChild(headerRow);
   table.appendChild(thead);
 
-  // Table Body
   const tbody = document.createElement("tbody");
 
-  parseResult.events.forEach(item => {
+  parseResult.events.forEach((item, idx) => {
     const tr = document.createElement("tr");
 
-    // Title cell with optional shift warning or unsupported reason
+    // Title cell
     const tdTitle = document.createElement("td");
-    const titleText = document.createElement("div");
+    const titleHeader = document.createElement("div");
+    titleHeader.className = "ics-title-header";
+
+    const tag = document.createElement("span");
+    tag.className = "course-tag";
+    tag.textContent = item.guessedCode;
+    titleHeader.appendChild(tag);
+
+    const titleText = document.createElement("span");
     titleText.className = "ics-cell-title";
     titleText.textContent = item.summary;
-    tdTitle.appendChild(titleText);
+    titleHeader.appendChild(titleText);
+    tdTitle.appendChild(titleHeader);
+
+    // Badges & Notices
+    if (item.isDuplicate) {
+      const dupBadge = document.createElement("span");
+      dupBadge.className = "ics-pill ics-pill-duplicate";
+      dupBadge.textContent = "Already in your planner";
+      tdTitle.appendChild(dupBadge);
+    }
 
     if (item.eventType === "repeating" && item.recurrenceInfo) {
       if (item.recurrenceInfo.timesShiftAfterClockChange) {
@@ -743,6 +1014,7 @@ function buildCalendarPreviewDOM(parseResult) {
       unsupp.textContent = item.unsupportedReason;
       tdTitle.appendChild(unsupp);
     }
+
     tr.appendChild(tdTitle);
 
     // When cell
@@ -751,21 +1023,34 @@ function buildCalendarPreviewDOM(parseResult) {
     tdWhen.textContent = formatEventWhen(item);
     tr.appendChild(tdWhen);
 
-    // Type badge cell
-    const tdType = document.createElement("td");
-    const typeBadge = document.createElement("span");
-    if (item.eventType === "repeating") {
-      typeBadge.className = "ics-badge ics-badge-repeating";
-      typeBadge.textContent = "Repeating";
-    } else if (item.eventType === "one-time") {
-      typeBadge.className = "ics-badge ics-badge-onetime";
-      typeBadge.textContent = item.componentType === "VTODO" ? "One-time (Todo)" : "One-time";
-    } else {
-      typeBadge.className = "ics-badge ics-badge-unsupported";
-      typeBadge.textContent = item.status === "CANCELLED" ? "Cancelled" : "Unsupported";
-    }
-    tdType.appendChild(typeBadge);
-    tr.appendChild(tdType);
+    // Action select cell
+    const tdAction = document.createElement("td");
+    const actionSelect = document.createElement("select");
+    actionSelect.className = "form-select ics-row-action";
+    actionSelect.dataset.rowIdx = idx;
+
+    const optClass = document.createElement("option");
+    optClass.value = "class";
+    optClass.textContent = "Class meeting";
+    actionSelect.appendChild(optClass);
+
+    const optAssign = document.createElement("option");
+    optAssign.value = "assignment";
+    optAssign.textContent = "Assignment / due date";
+    actionSelect.appendChild(optAssign);
+
+    const optSkip = document.createElement("option");
+    optSkip.value = "skip";
+    optSkip.textContent = "Skip";
+    actionSelect.appendChild(optSkip);
+
+    actionSelect.value = rowActionChoices[idx];
+    actionSelect.addEventListener("change", function () {
+      rowActionChoices[idx] = actionSelect.value;
+    });
+
+    tdAction.appendChild(actionSelect);
+    tr.appendChild(tdAction);
 
     // Location cell
     const tdLoc = document.createElement("td");
@@ -780,7 +1065,7 @@ function buildCalendarPreviewDOM(parseResult) {
   tableWrapper.appendChild(table);
   container.appendChild(tableWrapper);
 
-  // 3. Collapsible "Show raw details (first 5 events)" Accordion
+  // 6. Collapsible Raw Details (first 5 events)
   const details = document.createElement("details");
   details.className = "ics-raw-details";
 
@@ -804,6 +1089,7 @@ function buildCalendarPreviewDOM(parseResult) {
     const lines = [
       `Component: ${item.componentType}`,
       `UID: ${item.uid}`,
+      `Guessed Course: ${item.guessedCode}`,
       `Type: ${item.eventType}`,
       `Location: ${item.location || "(none)"}`,
       `DTSTART: ${item.dtStart ? `${item.dtStart.dateKey} ${item.dtStart.timeStr || "(all-day)"}${item.dtStart.isUTC ? " (UTC decoded)" : ""}` : "(none)"}`,
@@ -819,7 +1105,6 @@ function buildCalendarPreviewDOM(parseResult) {
     }
 
     if (item.description) {
-      // Show first 150 characters of description safely without following links
       const cleanDesc = item.description.replace(/[\r\n]+/g, " ").slice(0, 150);
       lines.push(`Description preview: ${cleanDesc}${item.description.length > 150 ? "..." : ""}`);
     }
@@ -832,5 +1117,585 @@ function buildCalendarPreviewDOM(parseResult) {
   details.appendChild(rawContainer);
   container.appendChild(details);
 
+  // 7. Review & Import Action Bar
+  const bottomBar = document.createElement("div");
+  bottomBar.className = "ics-preview-actions";
+
+  const btnReview = document.createElement("button");
+  btnReview.type = "button";
+  btnReview.className = "btn-primary";
+  btnReview.textContent = "Review & Import...";
+  btnReview.addEventListener("click", function () {
+    if (typeof onReviewImport === "function") {
+      onReviewImport(parseResult, courseMappings, rowActionChoices);
+    }
+  });
+
+  bottomBar.appendChild(btnReview);
+  container.appendChild(bottomBar);
+
   return container;
+}
+
+// Prepares the full import plan comparing against existing stored items.
+function prepareImportPlan(parseResult, courseMappings, rowActions) {
+  const existingAssignments = typeof getStoredAssignments === "function" ? getStoredAssignments() : [];
+  const existingClasses = typeof getStoredClasses === "function" ? getStoredClasses() : [];
+  const existingCourses = typeof getStoredCourses === "function" ? getStoredCourses() : [];
+
+  // 0. Ensure guessedCode, isDuplicate, and matchedAssignmentId are evaluated on all events
+  parseResult.events.forEach(item => {
+    if (!item.guessedCode) {
+      item.guessedCode = guessCourseCode(item.summary) || "GENERAL";
+    }
+    if (item.isDuplicate === undefined) {
+      const dupMatch = findExistingAssignmentDuplicate(item, item.guessedCode, existingAssignments, existingCourses);
+      if (dupMatch) {
+        item.isDuplicate = true;
+        item.matchedAssignmentId = dupMatch.id;
+      } else {
+        item.isDuplicate = false;
+        item.matchedAssignmentId = null;
+      }
+    }
+  });
+
+  const coursesToCreate = [];
+  const resolvedCourseIdMap = {}; // code -> real courseId
+
+  // 1. Resolve course IDs and identify new courses to create
+  const mappings = courseMappings || {};
+  const createdCodes = new Set();
+  for (const [code, mappedVal] of Object.entries(mappings)) {
+    if (mappedVal && typeof mappedVal === "string" && mappedVal.startsWith("__NEW__:")) {
+      const cleanCode = normalizeCourseCode(code);
+      if (!createdCodes.has(cleanCode)) {
+        createdCodes.add(cleanCode);
+        const tempId = generateUniqueId("course");
+        const nextColor = typeof allocateColorNumber === "function"
+          ? allocateColorNumber([...existingCourses, ...coursesToCreate])
+          : 1;
+        coursesToCreate.push({
+          id: tempId,
+          code: cleanCode,
+          name: cleanCode,
+          colorNumber: nextColor,
+          source: "ics"
+        });
+        resolvedCourseIdMap[code] = tempId;
+      }
+    } else if (mappedVal) {
+      resolvedCourseIdMap[code] = mappedVal;
+    }
+  }
+
+  // Ensure any guessedCode present in events has a mapped courseId
+  parseResult.events.forEach(item => {
+    const code = item.guessedCode;
+    if (!resolvedCourseIdMap[code]) {
+      const matchedCourse = existingCourses.find(c => normalizeCourseCode(c.code) === normalizeCourseCode(code));
+      if (matchedCourse) {
+        resolvedCourseIdMap[code] = matchedCourse.id;
+      } else {
+        const cleanCode = normalizeCourseCode(code);
+        if (!createdCodes.has(cleanCode)) {
+          createdCodes.add(cleanCode);
+          const tempId = generateUniqueId("course");
+          const nextColor = typeof allocateColorNumber === "function"
+            ? allocateColorNumber([...existingCourses, ...coursesToCreate])
+            : 1;
+          coursesToCreate.push({
+            id: tempId,
+            code: cleanCode,
+            name: cleanCode,
+            colorNumber: nextColor,
+            source: "ics"
+          });
+          resolvedCourseIdMap[code] = tempId;
+        }
+      }
+    }
+  });
+
+  const newAssignments = [];
+  const updatedAssignments = [];
+  const matchedExistingAssignments = [];
+  const meetingsToGroup = [];
+  const skippedUIDs = [];
+
+  // Track all external IDs present in this imported file
+  const fileExternalIds = new Set();
+
+  parseResult.events.forEach((item, idx) => {
+    const action = rowActions[idx] || "skip";
+    const courseId = resolvedCourseIdMap[item.guessedCode];
+
+    if (action === "skip") {
+      skippedUIDs.push(item.uid);
+      if (item.isDuplicate && item.matchedAssignmentId) {
+        matchedExistingAssignments.push({
+          id: item.matchedAssignmentId,
+          externalId: item.uid
+        });
+      }
+      return;
+    }
+
+    if (action === "assignment") {
+      // If repeating event mapped to assignment, expand each occurrence
+      if (item.eventType === "repeating" && item.recurrenceInfo && item.recurrenceInfo.occurrences.length > 0) {
+        item.recurrenceInfo.occurrences.forEach(occ => {
+          const occExternalId = `${item.uid}#${occ.dateKey}`;
+          fileExternalIds.add(occExternalId);
+
+          const existing = existingAssignments.find(a => a.externalId === occExternalId);
+          if (existing) {
+            if (existing.dueDate !== occ.dateKey) {
+              updatedAssignments.push({
+                existing: existing,
+                oldDueDate: existing.dueDate,
+                newDueDate: occ.dateKey,
+                title: existing.title
+              });
+            }
+          } else {
+            newAssignments.push({
+              title: item.summary,
+              dueDate: occ.dateKey,
+              courseId: courseId,
+              source: "ics",
+              externalId: occExternalId
+            });
+          }
+        });
+      } else if (item.dtStart && item.dtStart.dateKey) {
+        fileExternalIds.add(item.uid);
+
+        const existing = existingAssignments.find(a => a.externalId === item.uid);
+        if (existing) {
+          if (existing.dueDate !== item.dtStart.dateKey) {
+            updatedAssignments.push({
+              existing: existing,
+              oldDueDate: existing.dueDate,
+              newDueDate: item.dtStart.dateKey,
+              title: existing.title
+            });
+          }
+        } else if (item.isDuplicate && item.matchedAssignmentId) {
+          matchedExistingAssignments.push({
+            id: item.matchedAssignmentId,
+            externalId: item.uid
+          });
+        } else {
+          newAssignments.push({
+            title: item.summary,
+            dueDate: item.dtStart.dateKey,
+            courseId: courseId,
+            source: "ics",
+            externalId: item.uid
+          });
+        }
+      }
+      return;
+    }
+
+    if (action === "class") {
+      fileExternalIds.add(item.uid);
+
+      let days = [];
+      let startTime = null;
+      let endTime = null;
+
+      if (item.eventType === "repeating" && item.recurrenceInfo) {
+        days = [...(item.recurrenceInfo.firstMeetingDays || [])];
+        startTime = item.recurrenceInfo.firstStartTime;
+        endTime = item.recurrenceInfo.firstEndTime;
+      } else if (item.dtStart) {
+        const jsDate = new Date(item.dtStart.year, item.dtStart.month - 1, item.dtStart.day);
+        days = [jsDate.getDay()];
+        startTime = item.dtStart.timeStr;
+        endTime = item.dtEnd ? item.dtEnd.timeStr : null;
+      }
+
+      meetingsToGroup.push({
+        courseId: courseId,
+        days: days,
+        startTime: startTime,
+        endTime: endTime,
+        location: item.location || "",
+        uid: item.uid,
+        summary: item.summary
+      });
+    }
+  });
+
+  // 2. Merge identical class meetings per course by time and location
+  const meetingGroups = {};
+  meetingsToGroup.forEach(m => {
+    const key = `${m.courseId}|${m.startTime || ""}|${m.endTime || ""}|${(m.location || "").toLowerCase().trim()}`;
+    if (!meetingGroups[key]) {
+      meetingGroups[key] = {
+        courseId: m.courseId,
+        startTime: m.startTime,
+        endTime: m.endTime,
+        location: m.location,
+        daysSet: new Set(),
+        uids: []
+      };
+    }
+    (m.days || []).forEach(d => meetingGroups[key].daysSet.add(d));
+    meetingGroups[key].uids.push(m.uid);
+  });
+
+  const newClasses = [];
+  const updatedClasses = [];
+
+  for (const group of Object.values(meetingGroups)) {
+    const mergedDays = Array.from(group.daysSet).sort((a, b) => a - b);
+    const primaryUID = group.uids[0];
+    const isUnscheduled = !group.startTime || !group.endTime || mergedDays.length === 0;
+
+    // Check if existing class matches externalId
+    const existing = existingClasses.find(c => group.uids.includes(c.externalId));
+    if (existing) {
+      const daysChanged = JSON.stringify(existing.days) !== JSON.stringify(mergedDays);
+      const timeChanged = existing.startTime !== group.startTime || existing.endTime !== group.endTime;
+      const locChanged = (existing.location || "").trim() !== (group.location || "").trim();
+
+      if (daysChanged || timeChanged || locChanged) {
+        updatedClasses.push({
+          existing: existing,
+          oldMeeting: { ...existing },
+          newDays: mergedDays,
+          newStartTime: group.startTime,
+          newEndTime: group.endTime,
+          newLocation: group.location,
+          isUnscheduled: isUnscheduled,
+          externalId: primaryUID
+        });
+      }
+    } else {
+      newClasses.push({
+        courseId: group.courseId,
+        days: mergedDays,
+        startTime: isUnscheduled ? null : group.startTime,
+        endTime: isUnscheduled ? null : group.endTime,
+        location: group.location,
+        unscheduled: isUnscheduled,
+        source: "ics",
+        externalId: primaryUID
+      });
+    }
+  }
+
+  // 3. Count disappeared items (present in planner as ics, but missing in new file)
+  let disappearedCount = 0;
+  existingAssignments.forEach(a => {
+    if (a.source === "ics" && a.externalId && !fileExternalIds.has(a.externalId)) {
+      disappearedCount++;
+    }
+  });
+
+  // 4. Headline summary
+  const headlineParts = [];
+  if (newClasses.length > 0 || updatedClasses.length > 0) {
+    const classCount = newClasses.length + updatedClasses.length;
+    headlineParts.push(`${classCount} class meeting${classCount !== 1 ? "s" : ""}`);
+  }
+  if (newAssignments.length > 0 || updatedAssignments.length > 0) {
+    const assignCount = newAssignments.length + updatedAssignments.length;
+    headlineParts.push(`${assignCount} assignment${assignCount !== 1 ? "s" : ""}`);
+  }
+  if (coursesToCreate.length > 0) {
+    headlineParts.push(`create ${coursesToCreate.length} course${coursesToCreate.length !== 1 ? "s" : ""}`);
+  }
+
+  const summaryHeadline = headlineParts.length > 0
+    ? `Import ${headlineParts.join(" and ")}`
+    : "No new items to import";
+
+  return {
+    coursesToCreate: coursesToCreate,
+    newAssignments: newAssignments,
+    updatedAssignments: updatedAssignments,
+    matchedExistingAssignments: matchedExistingAssignments,
+    newClasses: newClasses,
+    updatedClasses: updatedClasses,
+    skippedUIDs: skippedUIDs,
+    disappearedCount: disappearedCount,
+    summaryHeadline: summaryHeadline
+  };
+}
+
+// Builds the confirmation summary DOM view before committing any changes to storage.
+function buildConfirmSummaryDOM(importPlan, onConfirm, onBack, onCancel) {
+  const container = document.createElement("div");
+  container.className = "ics-confirm-container";
+
+  // Headline Banner
+  const headlineBox = document.createElement("div");
+  headlineBox.className = "ics-summary-banner";
+
+  const hTitle = document.createElement("h3");
+  hTitle.className = "ics-confirm-heading";
+  hTitle.textContent = "Review & Confirm Import";
+  headlineBox.appendChild(hTitle);
+
+  const headline = document.createElement("p");
+  headline.className = "ics-confirm-headline";
+  headline.textContent = importPlan.summaryHeadline;
+  headlineBox.appendChild(headline);
+
+  container.appendChild(headlineBox);
+
+  const listContainer = document.createElement("div");
+  listContainer.className = "ics-confirm-sections";
+
+  // Section: Courses to Create
+  if (importPlan.coursesToCreate.length > 0) {
+    const sec = document.createElement("div");
+    sec.className = "ics-confirm-section";
+
+    const title = document.createElement("h4");
+    title.textContent = `New Courses to Create (${importPlan.coursesToCreate.length})`;
+    sec.appendChild(title);
+
+    const ul = document.createElement("ul");
+    importPlan.coursesToCreate.forEach(c => {
+      const li = document.createElement("li");
+      li.textContent = `${c.code} (Color ${c.colorNumber})`;
+      ul.appendChild(li);
+    });
+    sec.appendChild(ul);
+    listContainer.appendChild(sec);
+  }
+
+  // Section: Class Meetings
+  if (importPlan.newClasses.length > 0 || importPlan.updatedClasses.length > 0) {
+    const sec = document.createElement("div");
+    sec.className = "ics-confirm-section";
+
+    const title = document.createElement("h4");
+    title.textContent = `Class Meetings (${importPlan.newClasses.length} new, ${importPlan.updatedClasses.length} updated)`;
+    sec.appendChild(title);
+
+    const ul = document.createElement("ul");
+    importPlan.newClasses.forEach(m => {
+      const li = document.createElement("li");
+      const dayStr = (m.days || []).map(d => ICS_DAY_NAMES[d]).join(", ") || "No set days";
+      const timeStr = m.startTime && m.endTime ? `${m.startTime} - ${m.endTime}` : "No set time";
+      li.textContent = `Add meeting: ${dayStr} ${timeStr}${m.location ? ` (${m.location})` : ""}`;
+      ul.appendChild(li);
+    });
+
+    importPlan.updatedClasses.forEach(u => {
+      const li = document.createElement("li");
+      const dayStr = (u.newDays || []).map(d => ICS_DAY_NAMES[d]).join(", ");
+      li.textContent = `Update meeting: changed to ${dayStr} ${u.newStartTime || ""} - ${u.newEndTime || ""}`;
+      ul.appendChild(li);
+    });
+
+    sec.appendChild(ul);
+    listContainer.appendChild(sec);
+  }
+
+  // Section: Assignments
+  if (importPlan.newAssignments.length > 0 || importPlan.updatedAssignments.length > 0) {
+    const sec = document.createElement("div");
+    sec.className = "ics-confirm-section";
+
+    const title = document.createElement("h4");
+    title.textContent = `Assignments (${importPlan.newAssignments.length} new, ${importPlan.updatedAssignments.length} updated)`;
+    sec.appendChild(title);
+
+    const ul = document.createElement("ul");
+
+    // Show updated assignments first
+    importPlan.updatedAssignments.forEach(u => {
+      const li = document.createElement("li");
+      li.className = "ics-confirm-change-item";
+      li.textContent = `Changed due date: "${u.title}" was ${u.oldDueDate} → now ${u.newDueDate}`;
+      ul.appendChild(li);
+    });
+
+    // Sample of new assignments (first 6)
+    const sampleNew = importPlan.newAssignments.slice(0, 6);
+    sampleNew.forEach(a => {
+      const li = document.createElement("li");
+      li.textContent = `Add: "${a.title}" (Due: ${a.dueDate})`;
+      ul.appendChild(li);
+    });
+
+    if (importPlan.newAssignments.length > 6) {
+      const liMore = document.createElement("li");
+      liMore.className = "form-hint";
+      liMore.textContent = `... and ${importPlan.newAssignments.length - 6} more new assignments`;
+      ul.appendChild(liMore);
+    }
+
+    sec.appendChild(ul);
+    listContainer.appendChild(sec);
+  }
+
+  // Section: Preserved Items & Skipped Items
+  const noteSec = document.createElement("div");
+  noteSec.className = "ics-confirm-section";
+
+  const noteTitle = document.createElement("h4");
+  noteTitle.textContent = "Safety & Preservation";
+  noteSec.appendChild(noteTitle);
+
+  const noteUl = document.createElement("ul");
+
+  if (importPlan.matchedExistingAssignments.length > 0) {
+    const li = document.createElement("li");
+    li.textContent = `${importPlan.matchedExistingAssignments.length} assignment(s) already in your planner were linked to calendar IDs without creating duplicates.`;
+    noteUl.appendChild(li);
+  }
+
+  if (importPlan.disappearedCount > 0) {
+    const li = document.createElement("li");
+    li.textContent = `${importPlan.disappearedCount} existing planner item(s) no longer in this calendar file will remain safely untouched.`;
+    noteUl.appendChild(li);
+  }
+
+  if (importPlan.skippedUIDs.length > 0) {
+    const li = document.createElement("li");
+    li.textContent = `${importPlan.skippedUIDs.length} event(s) were skipped and remembered so they won't appear as new on future re-imports.`;
+    noteUl.appendChild(li);
+  }
+
+  noteSec.appendChild(noteUl);
+  listContainer.appendChild(noteSec);
+
+  container.appendChild(listContainer);
+
+  // Confirmation Footer Actions
+  const footerActions = document.createElement("div");
+  footerActions.className = "dialog-footer";
+
+  const btnCancel = document.createElement("button");
+  btnCancel.type = "button";
+  btnCancel.className = "btn-secondary";
+  btnCancel.textContent = "Cancel";
+  btnCancel.addEventListener("click", onCancel);
+  footerActions.appendChild(btnCancel);
+
+  const btnBack = document.createElement("button");
+  btnBack.type = "button";
+  btnBack.className = "btn-secondary";
+  btnBack.textContent = "Back to Preview";
+  btnBack.addEventListener("click", onBack);
+  footerActions.appendChild(btnBack);
+
+  const btnConfirm = document.createElement("button");
+  btnConfirm.type = "button";
+  btnConfirm.className = "btn-primary";
+  btnConfirm.textContent = "Confirm and Save";
+  btnConfirm.addEventListener("click", onConfirm);
+  footerActions.appendChild(btnConfirm);
+
+  container.appendChild(footerActions);
+
+  return container;
+}
+
+// Commits the verified import plan to localStorage and updates history/badges.
+function executeImportPlan(importPlan) {
+  const isBaseline = typeof isCalendarBaseline === "function" ? isCalendarBaseline() : false;
+
+  // 1. Save new courses
+  if (importPlan.coursesToCreate.length > 0) {
+    const courses = getStoredCourses();
+    importPlan.coursesToCreate.forEach(c => {
+      courses.push(c);
+    });
+    saveStoredCourses(courses);
+  }
+
+  // 2. Add new assignments
+  if (importPlan.newAssignments.length > 0) {
+    const assignments = getStoredAssignments();
+    importPlan.newAssignments.forEach(a => {
+      assignments.push({
+        id: generateUniqueId("assign"),
+        courseId: a.courseId,
+        title: a.title.trim(),
+        dueDate: a.dueDate,
+        planned: false,
+        firstSeen: isBaseline ? null : Date.now(),
+        lastChanged: null,
+        previousDueDate: null,
+        source: "ics",
+        externalId: a.externalId
+      });
+    });
+    saveStoredAssignments(assignments);
+  }
+
+  // 3. Update changed assignments (due date changes)
+  if (importPlan.updatedAssignments.length > 0) {
+    const assignments = getStoredAssignments();
+    importPlan.updatedAssignments.forEach(u => {
+      const idx = assignments.findIndex(item => item.id === u.existing.id);
+      if (idx !== -1) {
+        assignments[idx].previousDueDate = assignments[idx].dueDate;
+        assignments[idx].dueDate = u.newDueDate;
+        assignments[idx].lastChanged = Date.now();
+      }
+    });
+    saveStoredAssignments(assignments);
+  }
+
+  // 4. Attach externalId to matched duplicates
+  if (importPlan.matchedExistingAssignments.length > 0) {
+    const assignments = getStoredAssignments();
+    importPlan.matchedExistingAssignments.forEach(m => {
+      const idx = assignments.findIndex(item => item.id === m.id);
+      if (idx !== -1 && !assignments[idx].externalId) {
+        assignments[idx].externalId = m.externalId;
+      }
+    });
+    saveStoredAssignments(assignments);
+  }
+
+  // 5. Save new class meetings
+  if (importPlan.newClasses.length > 0) {
+    const classes = getStoredClasses();
+    importPlan.newClasses.forEach(c => {
+      classes.push({
+        id: generateUniqueId("meeting"),
+        courseId: c.courseId,
+        days: c.days || [],
+        startTime: c.startTime || null,
+        endTime: c.endTime || null,
+        location: (c.location || "").trim(),
+        source: "ics",
+        unscheduled: Boolean(c.unscheduled),
+        externalId: c.externalId || null
+      });
+    });
+    saveStoredClasses(classes);
+  }
+
+  // 6. Update changed class meetings
+  if (importPlan.updatedClasses.length > 0) {
+    const classes = getStoredClasses();
+    importPlan.updatedClasses.forEach(u => {
+      const idx = classes.findIndex(item => item.id === u.existing.id);
+      if (idx !== -1) {
+        classes[idx].days = u.newDays || [];
+        classes[idx].startTime = u.newStartTime || null;
+        classes[idx].endTime = u.newEndTime || null;
+        classes[idx].location = (u.newLocation || "").trim();
+        classes[idx].unscheduled = Boolean(u.isUnscheduled);
+      }
+    });
+    saveStoredClasses(classes);
+  }
+
+  // 7. Store skipped UIDs in ignored list
+  if (importPlan.skippedUIDs.length > 0 && typeof addIgnoredUIDs === "function") {
+    addIgnoredUIDs(importPlan.skippedUIDs);
+  }
 }

@@ -9,6 +9,7 @@ const COURSES_STORAGE_KEY = "populi_courses";
 const DATA_VERSION_KEY = "populi_data_version";
 const MIGRATION_SNAPSHOT_KEY = "populi_migration_backup_pre_v3";
 const LEGACY_COLORS_KEY = "populi_course_colors";
+const IGNORED_UIDS_STORAGE_KEY = "populi_ignored_uids";
 
 // Normalizes course codes by trimming, collapsing inner spaces, and upper-casing.
 function normalizeCourseCode(code) {
@@ -180,10 +181,11 @@ function addAssignment(data) {
     title: data.title.trim(),
     dueDate: data.dueDate,
     planned: false,
-    firstSeen: data.isJustPosted ? Date.now() : null,
-    lastChanged: null,
-    previousDueDate: null,
-    source: "manual"
+    firstSeen: data.isJustPosted ? Date.now() : (data.firstSeen !== undefined ? data.firstSeen : null),
+    lastChanged: data.lastChanged || null,
+    previousDueDate: data.previousDueDate || null,
+    source: data.source || "manual",
+    externalId: data.externalId || null
   };
 
   assignments.push(newAssignment);
@@ -227,10 +229,15 @@ function toggleAssignmentPlanned(id) {
   }
 }
 
-// Deletes a single assignment by its ID.
+// Deletes a single assignment by its ID and records externalId in ignored list if present.
 function deleteAssignment(id) {
-  const assignments = getStoredAssignments().filter(item => item.id !== id);
-  saveStoredAssignments(assignments);
+  const assignments = getStoredAssignments();
+  const toDelete = assignments.find(item => item.id === id);
+  if (toDelete && toDelete.externalId) {
+    addIgnoredUIDs(toDelete.externalId);
+  }
+  const remaining = assignments.filter(item => item.id !== id);
+  saveStoredAssignments(remaining);
 }
 
 // --------------------------------------------------------------------------
@@ -261,7 +268,8 @@ function addClassMeeting(data) {
     endTime: isUnscheduled ? null : (data.endTime || null),
     location: (data.location || "").trim(),
     source: data.source || "manual",
-    unscheduled: isUnscheduled
+    unscheduled: isUnscheduled,
+    externalId: data.externalId || null
   };
 
   classes.push(newClass);
@@ -287,16 +295,61 @@ function updateClassMeeting(id, data) {
   current.endTime = isUnscheduled ? null : (data.endTime || null);
   current.location = (data.location || "").trim();
   current.unscheduled = isUnscheduled;
+  if (data.externalId) {
+    current.externalId = data.externalId;
+  }
 
   classes[index] = current;
   saveStoredClasses(classes);
   return current;
 }
 
-// Deletes a single class meeting by its ID.
+// Deletes a single class meeting by its ID and records externalId in ignored list if present.
 function deleteClassMeeting(id) {
-  const classes = getStoredClasses().filter(item => item.id !== id);
-  saveStoredClasses(classes);
+  const classes = getStoredClasses();
+  const toDelete = classes.find(item => item.id === id);
+  if (toDelete && toDelete.externalId) {
+    addIgnoredUIDs(toDelete.externalId);
+  }
+  const remaining = classes.filter(item => item.id !== id);
+  saveStoredClasses(remaining);
+}
+
+// --------------------------------------------------------------------------
+// CALENDAR IMPORT & IGNORED UIDS STORAGE HELPERS
+// --------------------------------------------------------------------------
+
+// Retrieves the list of ignored/skipped calendar UIDs.
+function getIgnoredUIDs() {
+  const data = localStorage.getItem(IGNORED_UIDS_STORAGE_KEY);
+  return data ? JSON.parse(data) : [];
+}
+
+// Saves the list of ignored/skipped calendar UIDs.
+function saveIgnoredUIDs(uids) {
+  localStorage.setItem(IGNORED_UIDS_STORAGE_KEY, JSON.stringify(uids || []));
+}
+
+// Adds one or more UIDs to the ignored list without duplicates.
+function addIgnoredUIDs(newUIDs) {
+  if (!newUIDs) return;
+  const current = new Set(getIgnoredUIDs());
+  const list = Array.isArray(newUIDs) ? newUIDs : [newUIDs];
+  list.forEach(uid => {
+    if (uid && typeof uid === "string") {
+      current.add(uid.trim());
+    }
+  });
+  saveIgnoredUIDs(Array.from(current));
+}
+
+// Baseline detection: returns true if NO stored assignment or class has source "ics".
+function isCalendarBaseline() {
+  const assignments = getStoredAssignments();
+  const classes = getStoredClasses();
+  const hasIcsAssignment = assignments.some(a => a.source === "ics");
+  const hasIcsClass = classes.some(c => c.source === "ics");
+  return !hasIcsAssignment && !hasIcsClass;
 }
 
 // --------------------------------------------------------------------------
@@ -454,6 +507,7 @@ function clearAllData() {
   saveStoredCourses([]);
   saveStoredAssignments([]);
   saveStoredClasses([]);
+  saveIgnoredUIDs([]);
   localStorage.setItem(DATA_VERSION_KEY, "3");
 }
 
@@ -468,7 +522,8 @@ function exportBackup() {
     exportedAt: new Date().toISOString(),
     courses: courses,
     assignments: assignments,
-    classes: classes
+    classes: classes,
+    ignoredUIDs: getIgnoredUIDs()
   };
 
   const jsonString = JSON.stringify(payload, null, 2);
@@ -553,7 +608,8 @@ function validateBackupJSON(rawText) {
         version: 3,
         courses: data.courses,
         assignments: data.assignments,
-        classes: data.classes
+        classes: data.classes,
+        ignoredUIDs: Array.isArray(data.ignoredUIDs) ? data.ignoredUIDs : []
       };
     }
 

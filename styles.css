@@ -1678,6 +1678,10 @@ dialog.modal-dialog::backdrop {
   margin: 0;
 }
 
+/* ==========================================================================
+   CALENDAR IMPORT STAGE 2 (MAPPINGS, ACTIONS, CONFIRM SUMMARY)
+   ========================================================================== */
+.ics-stage-note,
 .ics-stage1-note {
   flex: 1;
   display: flex;
@@ -1685,6 +1689,163 @@ dialog.modal-dialog::backdrop {
   gap: var(--space-sm);
   font-size: 0.8rem;
   color: var(--text-dim);
+}
+
+.ics-course-mappings-box {
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.ics-section-subtitle {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: var(--space-xs);
+}
+
+.ics-course-mappings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.ics-course-mapping-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.ics-mapping-arrow {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.ics-course-select {
+  flex: 1;
+  min-width: 200px;
+  max-width: 380px;
+}
+
+.ics-group-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.ics-group-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ics-group-buttons {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  height: 28px;
+  border-radius: var(--radius-sm);
+}
+
+.ics-title-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+
+.ics-row-action {
+  min-width: 140px;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+}
+
+.ics-pill-duplicate {
+  background-color: var(--badge-changed-bg);
+  color: var(--badge-changed-text);
+  border: 1px solid var(--badge-changed-border);
+}
+
+.ics-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--card-border);
+}
+
+/* Confirmation Summary View */
+.ics-confirm-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.ics-confirm-heading {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: var(--space-xs);
+}
+
+.ics-confirm-headline {
+  font-size: 0.95rem;
+  color: var(--primary);
+  font-weight: 600;
+  margin: 0;
+}
+
+.ics-confirm-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: var(--space-xs);
+}
+
+.ics-confirm-section {
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-md);
+}
+
+.ics-confirm-section h4 {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: var(--space-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.ics-confirm-section ul {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.ics-confirm-change-item {
+  color: var(--badge-changed-text);
+  font-weight: 500;
 }
 
 /* ==========================================================================
@@ -1721,6 +1882,7 @@ dialog.modal-dialog::backdrop {
   .ics-input-grid {
     grid-template-columns: 1fr;
   }
+  .ics-stage-note,
   .ics-stage1-note {
     display: none;
   }
