@@ -14,3 +14,6 @@ $RECYCLE.BIN/
 # Logs and Temp Files
 *.log
 *.tmp
+
+# Calendar Files (Populi exports contain personal student schedule data)
+*.ics

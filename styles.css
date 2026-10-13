@@ -1439,6 +1439,255 @@ dialog.modal-dialog::backdrop {
 }
 
 /* ==========================================================================
+   PANEL HEADER ACTIONS & UTILITY BUTTONS
+   ========================================================================== */
+.panel-header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-md);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+/* ==========================================================================
+   CALENDAR (.ICS) IMPORT DIALOG & PREVIEW (STAGE 1)
+   ========================================================================== */
+.ics-dialog-content {
+  max-width: 860px;
+  width: 95%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.ics-input-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.ics-input-box {
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.ics-paste-area {
+  font-family: monospace;
+  font-size: 0.82rem;
+  resize: vertical;
+  min-height: 70px;
+}
+
+.ics-preview-section {
+  margin-top: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.ics-summary-banner {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.ics-summary-stat {
+  font-weight: 600;
+  color: var(--text-main);
+  font-size: 0.95rem;
+}
+
+.ics-summary-components {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.ics-table-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--card-bg);
+}
+
+.ics-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.ics-preview-table th {
+  position: sticky;
+  top: 0;
+  background-color: var(--input-bg);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--card-border);
+  z-index: 1;
+}
+
+.ics-preview-table td {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--card-border);
+  color: var(--text-main);
+  vertical-align: top;
+}
+
+.ics-preview-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ics-cell-title {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.ics-cell-when {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.ics-cell-location {
+  color: var(--text-dim);
+  font-size: 0.84rem;
+}
+
+.ics-tzid-note {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.ics-unsupported-reason {
+  font-size: 0.75rem;
+  color: var(--danger-text);
+  margin-top: 2px;
+}
+
+.ics-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.ics-badge-repeating {
+  background-color: var(--course-tag-bg);
+  color: var(--course-tag-text);
+  border: 1px solid var(--course-tag-border);
+}
+
+.ics-badge-onetime {
+  background-color: var(--badge-new-bg);
+  color: var(--badge-new-text);
+  border: 1px solid var(--badge-new-border);
+}
+
+.ics-badge-unsupported {
+  background-color: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
+}
+
+.ics-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  margin-top: 2px;
+  margin-right: 4px;
+}
+
+.ics-pill-warning {
+  background-color: var(--badge-changed-bg);
+  color: var(--badge-changed-text);
+  border: 1px solid var(--badge-changed-border);
+}
+
+.ics-pill-info {
+  background-color: var(--course-tag-bg);
+  color: var(--course-tag-text);
+  border: 1px solid var(--course-tag-border);
+}
+
+.ics-raw-details {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--input-bg);
+  padding: var(--space-sm) var(--space-md);
+  font-size: 0.85rem;
+}
+
+.ics-raw-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ics-raw-details summary:hover {
+  color: var(--text-main);
+}
+
+.ics-raw-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.ics-raw-item {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm);
+}
+
+.ics-raw-item h4 {
+  font-size: 0.82rem;
+  color: var(--text-main);
+  margin-bottom: var(--space-xs);
+}
+
+.ics-raw-item pre {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.ics-stage1-note {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+/* ==========================================================================
    RESPONSIVE LAYOUT
    ========================================================================== */
 @media (max-width: 900px) {
@@ -1468,5 +1717,11 @@ dialog.modal-dialog::backdrop {
   .tab-btn {
     padding: 0 var(--space-sm);
     font-size: 0.88rem;
+  }
+  .ics-input-grid {
+    grid-template-columns: 1fr;
+  }
+  .ics-stage1-note {
+    display: none;
   }
 }

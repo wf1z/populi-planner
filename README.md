@@ -203,9 +203,147 @@ A clean, dark-mode, at-a-glance planner for college students that highlights upc
 
 ---
 
+## 📅 Stage 1: Populi Calendar (.ics) Import (Read & Preview Only)
+
+Stage 1 provides calendar file parsing, line unfolding, component analysis, and a structured preview table without saving or modifying any data in `localStorage`.
+
+### 1. Security & Privacy Notice
+> [!IMPORTANT]
+> **Calendar Data Privacy**: Calendar files (`.ics`) exported from Populi contain real personal student schedule data, including courses, professors, meeting locations, and assignments.
+> - **`.gitignore` protection**: `*.ics` is ignored in `.gitignore` to prevent committing calendar files to version control.
+> - **Zero server transmissions**: All `.ics` file reading, parsing, and rendering happens entirely inside your local browser.
+> - **Zero persistence in Stage 1**: In Stage 1, all parsed event structures and raw file texts are stored purely in temporary browser memory and are completely cleared when the dialog closes.
+
+### 2. RFC 5545 Parsing Capabilities
+- **Tolerant Line Unfolding**: Unfolds lines wrapped with CRLF/LF followed by a space or tab (`\r\n `, `\n\t`, etc.).
+- **Case-Insensitive Property & Quoted Parameter Parsing**: Handles property names and parameters regardless of case, including quoted parameter values (e.g. `TZID="America/Los_Angeles"`).
+- **Strict Local Date/Time Handling**:
+  - **All-day dates** (`VALUE=DATE` or 8 digits): Decoded directly into local `{ year, month, day }` and formatted as `YYYY-MM-DD`. Never uses `new Date("YYYY-MM-DD")` or `.toISOString()`.
+  - **Floating times**: Wall-clock values mapped directly into local time parts.
+  - **UTC times ("Z")**: Decoded into local date and time parts using the browser's local timezone.
+  - **TZID times**: Campus wall-clock times preserved, with a note indicating the timezone as written.
+- **Component Counting**: Reports the count of every component type found in the file (e.g. `40 VEVENT, 3 VTODO, 1 VTIMEZONE`).
+- **VTODO Support**: Treated as a one-time assignment item using `DUE` (or `DTSTART`) as its date.
+- **Weekly Recurrence (RRULE)**:
+  - Supports `FREQ=WEEKLY` with `BYDAY`, `INTERVAL`, `COUNT`, `UNTIL`, and `EXDATE`.
+  - Capped at 60 occurrences and 1 year from today.
+  - Detects daylight saving clock shifts across the first 12 occurrences and displays a visible warning: `⚠️ times shift after clock change`.
+  - Numbered weekdays (e.g. `1MO`) and non-weekly frequencies (e.g. `DAILY`, `MONTHLY`) are classified as `Unsupported`.
+  - Events marked `STATUS:CANCELLED` or containing `RECURRENCE-ID` are classified as `Unsupported`.
+- **Untrusted Text Rendering**: Every title, location, description, and raw debug string is rendered exclusively via `textContent`, never `innerHTML`. No links are followed or executed.
+
+---
+
+## 🧪 How to Test Stage 1 (Calendar Import Preview)
+
+### Test 1: Open the Calendar Import Dialog
+1. Open `index.html` in your web browser.
+2. Verify you can open the **Import Populi Calendar** dialog from any of the three locations:
+   - Expand **Data & Backup tools** at the bottom of the Planner and click **Import Calendar**.
+   - Switch to the **Schedule** tab and click the **Import Calendar** button in the top right.
+   - Switch to the **Courses** tab and click the **Import Calendar** button in the top right.
+3. Observe the dialog appearance:
+   - Title: *"Import Populi Calendar (.ics)"*.
+   - A file picker (`Choose .ics file`) with a 2 MB / 2,000 event limit notice.
+   - A paste textarea (`Or paste calendar text`).
+   - A footer note indicating: *"Stage 1 Preview: Nothing is saved yet. In Stage 2, you will be able to map and import these events."*
+4. Test dialog closing:
+   - Click the **Close** button or the top-right `&times;` button.
+   - Click outside the dialog on the backdrop: verify it closes only if both `mousedown` and `click` occur on the backdrop.
+   - Reopen and press the **Esc** key: verify it closes and focus returns to the button that opened it.
+
+### Test 2: Paste Calendar Text to Preview Events
+1. Open the Calendar Import dialog.
+2. Copy and paste the following sample `.ics` snippet into the paste textarea:
+   ```text
+   BEGIN:VCALENDAR
+   VERSION:2.0
+   PRODID:-//Populi//Calendar//EN
+   BEGIN:VTIMEZONE
+   TZID:America/Los_Angeles
+   BEGIN:STANDARD
+   DTSTART:19701101T020000
+   RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+   TZOFFSETFROM:-0700
+   TZOFFSETTO:-0800
+   END:STANDARD
+   END:VTIMEZONE
+   BEGIN:VEVENT
+   UID:class-theo201-fall2026@populi.co
+   SUMMARY:THEO 201: Systematic Theology I
+   DTSTART;TZID="America/Los_Angeles":20261015T090000
+   DTEND;TZID="America/Los_Angeles":20261015T101500
+   RRULE:FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261215T235959Z
+   LOCATION:Chapel Hall 102
+   DESCRIPTION:Fall semester theology lecture
+   END:VEVENT
+   BEGIN:VEVENT
+   UID:assign-reading-theo201@populi.co
+   SUMMARY:THEO 201: Reading Reflection 5
+   DTSTART;VALUE=DATE:20261020
+   LOCATION:Online
+   END:VEVENT
+   BEGIN:VTODO
+   UID:todo-quiz-bibl110@populi.co
+   SUMMARY:BIBL 110: Pentateuch Review Quiz
+   DUE;VALUE=DATE:20261022
+   LOCATION:LMS Portal
+   END:VTODO
+   BEGIN:VEVENT
+   UID:cancelled-meeting-bibl@populi.co
+   SUMMARY:BIBL 110: Review Session (Cancelled)
+   DTSTART:20261023T140000Z
+   STATUS:CANCELLED
+   END:VEVENT
+   BEGIN:VEVENT
+   UID:recurrence-override-theo@populi.co
+   SUMMARY:THEO 201: Guest Lecturer Session
+   DTSTART:20261027T090000
+   RECURRENCE-ID:20261027T090000
+   END:VEVENT
+   END:VCALENDAR
+   ```
+3. Observe the rendered preview:
+   - **Summary Banner**: Displays `5 events found: 1 repeating, 2 one-time, 2 unsupported` and `Components in file: 4 VEVENT, 1 VTODO, 1 VTIMEZONE`.
+   - **Preview Table**:
+     - Row 1: `THEO 201: Systematic Theology I` | `Tue, Thu 09:00 - 10:15 (ends Dec 15)` | **Repeating** | `Chapel Hall 102`.
+     - Row 2: `THEO 201: Reading Reflection 5` | `Oct 20 (All day)` | **One-time** | `Online`.
+     - Row 3: `BIBL 110: Pentateuch Review Quiz` | `Oct 22 (All day)` | **One-time (Todo)** | `LMS Portal`.
+     - Row 4: `BIBL 110: Review Session (Cancelled)` | When formatted | **Cancelled** | `—`.
+     - Row 5: `THEO 201: Guest Lecturer Session` | When formatted | **Unsupported** | `—` with reason *"Changed single occurrence of a series (RECURRENCE-ID)"*.
+   - **Show raw details (first 5 events)** accordion:
+     - Click the accordion to expand it.
+     - Inspect the debug output for the events, including UID, parsed DTSTART/DTEND, raw RRULE, and first 3 calculated occurrence dates for repeating events.
+
+### Test 3: Test Clock Shift Warning
+1. Paste a repeating weekly event with UTC time across a Daylight Saving Time boundary:
+   ```text
+   BEGIN:VCALENDAR
+   VERSION:2.0
+   BEGIN:VEVENT
+   UID:utc-dst-shift-class@populi.co
+   SUMMARY:MIN 305: Pastoral Ministry Seminar
+   DTSTART:20261015T160000Z
+   DTEND:20261015T171500Z
+   RRULE:FREQ=WEEKLY;BYDAY=TH;COUNT=10
+   LOCATION:Room 204
+   END:VEVENT
+   END:VCALENDAR
+   ```
+2. If your computer's local timezone observes Daylight Saving Time (such as US Pacific / Eastern time, where the clock turns back 1 hour in early November):
+   - Notice the yellow pill: `⚠️ times shift after clock change`.
+
+### Test 4: Safety & Limits Verification
+1. Verify that closing the dialog clears the text paste box, file input, and preview DOM.
+2. Reopen the dialog: observe that the form is clean and ready for a new file.
+3. Check `populi_assignments` and `populi_classes` in your browser's Developer Tools (`Application > Local Storage`):
+   - Verify that **no data has been written or altered** in storage during Stage 1.
+
+---
+
 ## 🌿 Git Version Control Commands
 
-To commit your changes to Git:
+To commit Stage 1 to your Git repository, run these commands in your terminal:
 
 ```bash
 # 1. Navigate to the project folder
@@ -214,9 +352,9 @@ cd "C:\Users\supaw\Documents\populi-planner"
 # 2. Check changed and untracked files
 git status
 
-# 3. Stage all new and modified files
+# 3. Stage all modified and new files (note: *.ics files are automatically ignored)
 git add .
 
 # 4. Commit your changes
-git commit -m "Implement Stage 2: Courses tab, Course modal dialog with color picker, card summaries, and cascade delete"
+git commit -m "Implement Stage 1: Populi Calendar (.ics) parser and preview dialog with safety limits and local date decoding"
 ```

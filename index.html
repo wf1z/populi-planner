@@ -130,6 +130,7 @@
           <button type="button" class="btn-tool" id="btn-load-sample">Load Sample Data</button>
           <button type="button" class="btn-tool" id="btn-export">Export Backup</button>
           <button type="button" class="btn-tool" id="btn-import">Import Backup</button>
+          <button type="button" class="btn-tool" id="btn-import-calendar">Import Calendar</button>
           <button type="button" class="btn-tool btn-tool-danger" id="btn-clear-all">Clear All Data</button>
         </div>
       </details>
@@ -139,6 +140,9 @@
     <!-- Tab Panel 2: Schedule (Weekly Time Grid & Class Meetings) -->
     <div id="panel-schedule" role="tabpanel" aria-labelledby="tab-btn-schedule" style="display: none;">
       <div class="schedule-container">
+        <div class="panel-header-actions">
+          <button type="button" class="btn-secondary btn-sm" id="btn-schedule-import-calendar">Import Calendar</button>
+        </div>
         <div id="schedule-grid-container"></div>
         <div id="schedule-unscheduled-container" style="display: none;"></div>
         <div id="schedule-meetings-list"></div>
@@ -148,6 +152,9 @@
     <!-- Tab Panel 3: Courses (Manage Courses) -->
     <div id="panel-courses" role="tabpanel" aria-labelledby="tab-btn-courses" style="display: none;">
       <div class="courses-container">
+        <div class="panel-header-actions">
+          <button type="button" class="btn-secondary btn-sm" id="btn-courses-import-calendar">Import Calendar</button>
+        </div>
         <!-- Empty State Welcome Box (Shown when no courses exist) -->
         <div id="courses-empty-state" class="welcome-empty-state" style="display: none;">
           <h3>No courses yet</h3>
@@ -387,15 +394,59 @@
     </div>
   </dialog>
 
+  <!-- Native Modal Dialog for Calendar (.ics) Import & Preview (Stage 1) -->
+  <dialog id="calendar-dialog" class="modal-dialog">
+    <div class="dialog-content ics-dialog-content">
+      <div class="dialog-header">
+        <h2 class="dialog-title" id="calendar-dialog-heading">Import Populi Calendar (.ics)</h2>
+        <button type="button" class="dialog-close-btn" id="calendar-dialog-close-btn" aria-label="Close dialog">&times;</button>
+      </div>
+      <div class="dialog-body">
+        <p class="form-hint" style="margin-bottom: var(--space-md);">
+          Download your calendar (.ics) file from Populi, then choose the file or paste its text below to preview what it contains.
+        </p>
+
+        <!-- Error notification message banner -->
+        <div class="form-error-msg" id="calendar-error-msg" style="display: none;"></div>
+
+        <!-- Input options grid: file upload and paste -->
+        <div class="ics-input-grid">
+          <div class="ics-input-box">
+            <label for="calendar-file-input" class="form-label">Choose .ics file</label>
+            <input type="file" id="calendar-file-input" class="form-input" accept=".ics,text/calendar">
+            <p class="form-hint">Maximum file size: 2 MB (up to 2,000 events).</p>
+          </div>
+          <div class="ics-input-box">
+            <label for="calendar-paste-textarea" class="form-label">Or paste calendar text</label>
+            <textarea id="calendar-paste-textarea" class="form-input ics-paste-area" rows="3" placeholder="Paste BEGIN:VCALENDAR ... END:VCALENDAR here"></textarea>
+          </div>
+        </div>
+
+        <!-- Preview Results Container (Rendered dynamically by ics.js) -->
+        <div id="calendar-preview-target" class="ics-preview-section" style="display: none;"></div>
+      </div>
+
+      <!-- Dialog Footer Actions -->
+      <div class="dialog-footer">
+        <div class="ics-stage1-note">
+          <span class="ics-pill ics-pill-info">Stage 1 Preview</span>
+          <span>Nothing is saved yet. In Stage 2, you will be able to map and import these events.</span>
+        </div>
+        <button type="button" class="btn-secondary" id="calendar-close-btn">Close</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Hidden file input for Backup Import -->
   <input type="file" id="import-file-input" accept=".json" style="display: none;">
 
-  <!-- Scripts: Sample Data, Storage, Calendar, Schedule, Courses, and App Logic -->
+  <!-- Scripts: Sample Data, Storage, Calendar, Schedule, Courses, ICS Parser, and App Logic -->
   <script src="data/assignments.js"></script>
   <script src="storage.js"></script>
   <script src="calendar.js"></script>
   <script src="schedule.js"></script>
   <script src="courses.js"></script>
+  <script src="ics.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

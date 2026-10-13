@@ -13,6 +13,15 @@ let lastFocusedElement = null;
 // Tracks whether mousedown originated on the assignment dialog backdrop.
 let isBackdropMouseDown = false;
 
+// Stores reference to the element that triggered the calendar import dialog.
+let lastCalendarFocusedElement = null;
+
+// Tracks whether mousedown originated on the calendar dialog backdrop.
+let isCalendarBackdropMouseDown = false;
+
+// In-memory parsed calendar result for the active preview session.
+let currentParsedCalendarResult = null;
+
 // Parses a "YYYY-MM-DD" string into a local Date at midnight.
 function parseLocalDate(dateString) {
   const [year, month, day] = dateString.split("-").map(Number);
@@ -407,6 +416,122 @@ function handleSaveAndAddAnother() {
   renderApp();
 }
 
+// Opens the native Calendar Import modal dialog in preview mode.
+function openCalendarDialog() {
+  lastCalendarFocusedElement = document.activeElement;
+  const dialog = document.getElementById("calendar-dialog");
+  const fileInput = document.getElementById("calendar-file-input");
+  const pasteInput = document.getElementById("calendar-paste-textarea");
+  const errorMsg = document.getElementById("calendar-error-msg");
+  const previewTarget = document.getElementById("calendar-preview-target");
+
+  if (fileInput) fileInput.value = "";
+  if (pasteInput) pasteInput.value = "";
+  if (errorMsg) {
+    errorMsg.style.display = "none";
+    errorMsg.textContent = "";
+  }
+  if (previewTarget) {
+    previewTarget.innerHTML = "";
+    previewTarget.style.display = "none";
+  }
+  currentParsedCalendarResult = null;
+
+  dialog.showModal();
+  if (fileInput) {
+    fileInput.focus();
+  }
+}
+
+// Closes the Calendar Import modal dialog, purges all in-memory calendar text, and restores focus.
+function closeCalendarDialog() {
+  const dialog = document.getElementById("calendar-dialog");
+  const fileInput = document.getElementById("calendar-file-input");
+  const pasteInput = document.getElementById("calendar-paste-textarea");
+  const errorMsg = document.getElementById("calendar-error-msg");
+  const previewTarget = document.getElementById("calendar-preview-target");
+
+  if (fileInput) fileInput.value = "";
+  if (pasteInput) pasteInput.value = "";
+  if (errorMsg) {
+    errorMsg.style.display = "none";
+    errorMsg.textContent = "";
+  }
+  if (previewTarget) {
+    previewTarget.innerHTML = "";
+    previewTarget.style.display = "none";
+  }
+  currentParsedCalendarResult = null;
+
+  if (dialog.open) {
+    dialog.close();
+  }
+
+  if (lastCalendarFocusedElement && typeof lastCalendarFocusedElement.focus === "function") {
+    lastCalendarFocusedElement.focus();
+  }
+}
+
+// Displays a friendly error message in the calendar dialog and resets preview state.
+function showCalendarError(message) {
+  const errorMsg = document.getElementById("calendar-error-msg");
+  const previewTarget = document.getElementById("calendar-preview-target");
+  if (errorMsg) {
+    errorMsg.textContent = message;
+    errorMsg.style.display = "block";
+  }
+  if (previewTarget) {
+    previewTarget.innerHTML = "";
+    previewTarget.style.display = "none";
+  }
+  currentParsedCalendarResult = null;
+}
+
+// Safely parses calendar text and populates the Stage 1 preview table.
+function processCalendarText(rawText) {
+  const errorMsg = document.getElementById("calendar-error-msg");
+  const previewTarget = document.getElementById("calendar-preview-target");
+
+  if (!rawText || !rawText.trim()) {
+    if (errorMsg) {
+      errorMsg.style.display = "none";
+      errorMsg.textContent = "";
+    }
+    if (previewTarget) {
+      previewTarget.innerHTML = "";
+      previewTarget.style.display = "none";
+    }
+    currentParsedCalendarResult = null;
+    return;
+  }
+
+  try {
+    if (errorMsg) {
+      errorMsg.style.display = "none";
+      errorMsg.textContent = "";
+    }
+
+    const result = parseICSText(rawText);
+    currentParsedCalendarResult = result;
+
+    if (previewTarget) {
+      previewTarget.innerHTML = "";
+      if (result.totalEvents === 0) {
+        const noEventsMsg = document.createElement("div");
+        noEventsMsg.className = "empty-message";
+        noEventsMsg.textContent = "No VEVENT or VTODO components found in this calendar file.";
+        previewTarget.appendChild(noEventsMsg);
+      } else {
+        const previewDOM = buildCalendarPreviewDOM(result);
+        previewTarget.appendChild(previewDOM);
+      }
+      previewTarget.style.display = "block";
+    }
+  } catch (err) {
+    showCalendarError(err.message || "Failed to parse calendar data.");
+  }
+}
+
 // Switches between the Planner, Schedule, and Courses tabs and toggles views and action buttons.
 function switchTab(tabName) {
   currentActiveTab = tabName;
@@ -461,7 +586,8 @@ function switchTab(tabName) {
 function renderApp() {
   const assignmentDialog = document.getElementById("assignment-dialog");
   const classDialog = document.getElementById("class-dialog");
-  const isDialogOpen = (assignmentDialog && assignmentDialog.open) || (classDialog && classDialog.open);
+  const calendarDialog = document.getElementById("calendar-dialog");
+  const isDialogOpen = (assignmentDialog && assignmentDialog.open) || (classDialog && classDialog.open) || (calendarDialog && calendarDialog.open);
 
   // Capture active focus if dialog is not open
   const activeEl = document.activeElement;
@@ -732,6 +858,71 @@ document.addEventListener("DOMContentLoaded", function () {
     };
     reader.readAsText(file);
   });
+
+  // Calendar Import dialog buttons
+  const btnImportCal = document.getElementById("btn-import-calendar");
+  if (btnImportCal) btnImportCal.addEventListener("click", openCalendarDialog);
+
+  const btnScheduleImportCal = document.getElementById("btn-schedule-import-calendar");
+  if (btnScheduleImportCal) btnScheduleImportCal.addEventListener("click", openCalendarDialog);
+
+  const btnCoursesImportCal = document.getElementById("btn-courses-import-calendar");
+  if (btnCoursesImportCal) btnCoursesImportCal.addEventListener("click", openCalendarDialog);
+
+  // Calendar dialog close controls
+  const calendarCloseBtn = document.getElementById("calendar-close-btn");
+  if (calendarCloseBtn) calendarCloseBtn.addEventListener("click", closeCalendarDialog);
+
+  const calendarDialogCloseBtn = document.getElementById("calendar-dialog-close-btn");
+  if (calendarDialogCloseBtn) calendarDialogCloseBtn.addEventListener("click", closeCalendarDialog);
+
+  // Safe backdrop click handling for calendar dialog
+  const calDialogEl = document.getElementById("calendar-dialog");
+  if (calDialogEl) {
+    calDialogEl.addEventListener("mousedown", function (event) {
+      isCalendarBackdropMouseDown = (event.target === calDialogEl);
+    });
+    calDialogEl.addEventListener("click", function (event) {
+      if (isCalendarBackdropMouseDown && event.target === calDialogEl) {
+        closeCalendarDialog();
+      }
+      isCalendarBackdropMouseDown = false;
+    });
+    calDialogEl.addEventListener("close", function () {
+      closeCalendarDialog();
+    });
+  }
+
+  // Calendar dialog inputs: file selection and text paste
+  const calendarFileInput = document.getElementById("calendar-file-input");
+  if (calendarFileInput) {
+    calendarFileInput.addEventListener("change", function (event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      if (file.size > ICS_MAX_FILE_BYTES) {
+        const mb = (file.size / (1024 * 1024)).toFixed(1);
+        showCalendarError(`The selected file is too large (${mb} MB). Maximum allowed size is 2 MB.`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        processCalendarText(e.target.result);
+      };
+      reader.onerror = function () {
+        showCalendarError("Could not read the selected calendar file.");
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  const calendarPasteTextarea = document.getElementById("calendar-paste-textarea");
+  if (calendarPasteTextarea) {
+    calendarPasteTextarea.addEventListener("input", function () {
+      processCalendarText(calendarPasteTextarea.value);
+    });
+  }
 
   // Initialize calendar controls (Prev, Next, Today)
   if (typeof window.initCalendarControls === "function") {
