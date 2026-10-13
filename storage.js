@@ -240,6 +240,55 @@ function deleteAssignment(id) {
   saveStoredAssignments(remaining);
 }
 
+// Deletes multiple assignments in one atomic save and records their externalIds in populi_ignored_uids.
+function bulkDeleteAssignments(ids) {
+  const idSet = new Set(ids);
+  const assignments = getStoredAssignments();
+  const toDelete = [];
+  const remaining = [];
+  const externalIdsToAdd = [];
+
+  assignments.forEach(item => {
+    if (idSet.has(item.id)) {
+      toDelete.push(item);
+      if (item.externalId) {
+        externalIdsToAdd.push(item.externalId);
+      }
+    } else {
+      remaining.push(item);
+    }
+  });
+
+  if (externalIdsToAdd.length > 0) {
+    addIgnoredUIDs(externalIdsToAdd);
+  }
+
+  saveStoredAssignments(remaining);
+  return {
+    deletedAssignments: toDelete,
+    externalIdsAdded: externalIdsToAdd
+  };
+}
+
+// Restores deleted assignments and removes their externalIds from populi_ignored_uids.
+function bulkRestoreAssignments(itemsToRestore, externalIdsToRemove) {
+  if (!itemsToRestore || itemsToRestore.length === 0) return;
+  const assignments = getStoredAssignments();
+
+  // Re-insert restored items exactly as they were
+  itemsToRestore.forEach(item => {
+    if (!assignments.some(a => a.id === item.id)) {
+      assignments.push(item);
+    }
+  });
+
+  saveStoredAssignments(assignments);
+
+  if (externalIdsToRemove && externalIdsToRemove.length > 0) {
+    removeIgnoredUIDs(externalIdsToRemove);
+  }
+}
+
 // --------------------------------------------------------------------------
 // CLASS MEETING STORAGE HELPERS
 // --------------------------------------------------------------------------
@@ -341,6 +390,14 @@ function addIgnoredUIDs(newUIDs) {
     }
   });
   saveIgnoredUIDs(Array.from(current));
+}
+
+// Removes one or more UIDs from the ignored list (used by Undo).
+function removeIgnoredUIDs(uidsToRemove) {
+  if (!uidsToRemove) return;
+  const toRemove = new Set(Array.isArray(uidsToRemove) ? uidsToRemove : [uidsToRemove]);
+  const current = getIgnoredUIDs().filter(uid => !toRemove.has(uid));
+  saveIgnoredUIDs(current);
 }
 
 // Baseline detection: returns true if NO stored assignment or class has source "ics".

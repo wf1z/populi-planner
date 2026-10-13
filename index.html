@@ -30,12 +30,13 @@
     <!-- Tab Panel 1: Planner (Default Active) -->
     <div id="panel-planner" role="tabpanel" aria-labelledby="tab-btn-planner">
 
-      <!-- Compact Single-Line Course Filter -->
+      <!-- Compact Single-Line Course Filter & Select Mode Button -->
       <div class="compact-filter-bar">
         <label for="course-filter" class="filter-label">Filter by Course:</label>
         <select id="course-filter" class="filter-select">
           <option value="all">All Courses</option>
         </select>
+        <button type="button" id="btn-select-mode" class="btn-secondary btn-select-mode" aria-pressed="false">Select</button>
       </div>
 
       <!-- Empty State Welcome Box (Shown when no assignments exist at all) -->
@@ -134,6 +135,24 @@
           <button type="button" class="btn-tool btn-tool-danger" id="btn-clear-all">Clear All Data</button>
         </div>
       </details>
+      <!-- Sticky Bottom Action Bar for Select Mode -->
+      <div id="select-action-bar" class="select-action-bar" style="display: none;" role="region" aria-label="Bulk actions">
+        <div class="select-action-bar-inner">
+          <span id="select-count-text" class="select-count-text" aria-live="polite">0 selected</span>
+          <div class="select-action-bar-buttons">
+            <button type="button" id="btn-select-all-view" class="btn-secondary btn-sm">Select all in view</button>
+            <button type="button" id="btn-select-clear" class="btn-secondary btn-sm">Clear</button>
+            <button type="button" id="btn-delete-selected" class="btn-danger btn-sm">Delete selected</button>
+            <button type="button" id="btn-select-done" class="btn-primary btn-sm">Done</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Undo Toast Bar -->
+      <div id="undo-toast" class="undo-toast" style="display: none;" role="status" aria-live="polite">
+        <span id="undo-toast-text" class="undo-toast-text"></span>
+        <button type="button" id="btn-undo-delete" class="btn-undo">Undo</button>
+      </div>
 
     </div>
 
@@ -421,6 +440,17 @@
             <textarea id="calendar-paste-textarea" class="form-input ics-paste-area" rows="3" placeholder="Paste BEGIN:VCALENDAR ... END:VCALENDAR here"></textarea>
           </div>
         </div>
+        <!-- Cutoff Date Control (Part 2) -->
+        <div class="ics-cutoff-container" id="ics-cutoff-container" style="display: none;">
+          <div class="ics-cutoff-inner">
+            <label for="calendar-cutoff-date" class="form-label ics-cutoff-label">Don't import assignments due before:</label>
+            <div class="ics-cutoff-input-wrap">
+              <input type="date" id="calendar-cutoff-date" class="form-input ics-cutoff-input">
+              <button type="button" id="calendar-cutoff-today-btn" class="btn-secondary btn-sm">Today</button>
+            </div>
+          </div>
+          <p class="form-hint">Only affects assignments (not class meetings). Rows before the cutoff default to Skip.</p>
+        </div>
 
         <!-- Preview Results Container (Rendered dynamically by ics.js) -->
         <div id="calendar-preview-target" class="ics-preview-section" style="display: none;"></div>
@@ -433,6 +463,23 @@
           <span>Review your courses and actions above, then click Review &amp; Import.</span>
         </div>
         <button type="button" class="btn-secondary" id="calendar-close-btn">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Native Modal Dialog for Bulk Delete Confirmation -->
+  <dialog id="bulk-delete-dialog" class="modal-dialog">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h2 class="dialog-title">Delete Assignments</h2>
+        <button type="button" class="dialog-close-btn" id="bulk-delete-close-btn" aria-label="Close dialog">&times;</button>
+      </div>
+      <div class="dialog-body">
+        <p id="bulk-delete-message" class="confirm-dialog-text"></p>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" class="btn-secondary" id="bulk-delete-cancel-btn">Cancel</button>
+        <button type="button" class="btn-danger" id="bulk-delete-confirm-btn">Delete</button>
       </div>
     </div>
   </dialog>

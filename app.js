@@ -22,6 +22,16 @@ let isCalendarBackdropMouseDown = false;
 // In-memory parsed calendar result for the active preview session.
 let currentParsedCalendarResult = null;
 
+// Select mode and bulk delete state on Planner tab.
+let isSelectMode = false;
+let selectedAssignmentIds = new Set();
+let currentFilteredAssignments = [];
+let lastUndoDeletedItems = null;
+let lastUndoExternalIds = null;
+let undoToastTimeout = null;
+let isBulkDeleteBackdropMouseDown = false;
+let lastBulkDeleteFocusedElement = null;
+
 // Parses a "YYYY-MM-DD" string into a local Date at midnight.
 function parseLocalDate(dateString) {
   const [year, month, day] = dateString.split("-").map(Number);
@@ -74,8 +84,24 @@ function createBadgeElement(assignment) {
 // Builds a safe assignment card element using textContent to prevent HTML injection.
 function createAssignmentCard(assignment) {
   const card = document.createElement("article");
-  card.className = `assignment-card ${assignment.planned ? "is-planned" : ""}`;
+  const isSelected = selectedAssignmentIds.has(assignment.id);
+  card.className = `assignment-card ${assignment.planned ? "is-planned" : ""} ${isSelectMode ? "is-select-mode" : ""} ${isSelected ? "is-selected" : ""}`;
   card.id = `card-${assignment.id}`;
+
+  if (isSelectMode) {
+    card.setAttribute("role", "checkbox");
+    card.setAttribute("aria-checked", isSelected ? "true" : "false");
+    card.tabIndex = 0;
+    card.addEventListener("click", function () {
+      toggleCardSelection(assignment.id);
+    });
+    card.addEventListener("keydown", function (e) {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        toggleCardSelection(assignment.id);
+      }
+    });
+  }
 
   // Checkbox wrapper
   const checkboxWrapper = document.createElement("div");
@@ -83,13 +109,27 @@ function createAssignmentCard(assignment) {
 
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
-  checkbox.className = "planned-checkbox";
-  checkbox.checked = Boolean(assignment.planned);
-  checkbox.title = "Mark as planned";
-  checkbox.addEventListener("change", function () {
-    toggleAssignmentPlanned(assignment.id);
-    renderApp();
-  });
+
+  if (isSelectMode) {
+    checkbox.className = "card-select-checkbox";
+    checkbox.checked = isSelected;
+    checkbox.title = "Select assignment";
+    checkbox.setAttribute("aria-label", `Select assignment: ${assignment.title}`);
+    checkbox.addEventListener("click", function (e) {
+      e.stopPropagation();
+    });
+    checkbox.addEventListener("change", function () {
+      toggleCardSelection(assignment.id);
+    });
+  } else {
+    checkbox.className = "planned-checkbox";
+    checkbox.checked = Boolean(assignment.planned);
+    checkbox.title = "Mark as planned";
+    checkbox.addEventListener("change", function () {
+      toggleAssignmentPlanned(assignment.id);
+      renderApp();
+    });
+  }
   checkboxWrapper.appendChild(checkbox);
 
   // Main card content
@@ -113,32 +153,36 @@ function createAssignmentCard(assignment) {
     header.appendChild(badgeElement);
   }
 
-  // Card Action Buttons (Edit and Delete)
-  const actionWrapper = document.createElement("div");
-  actionWrapper.className = "card-actions";
+  // Card Action Buttons (Edit and Delete) - Hidden in select mode
+  if (!isSelectMode) {
+    const actionWrapper = document.createElement("div");
+    actionWrapper.className = "card-actions";
 
-  const editBtn = document.createElement("button");
-  editBtn.type = "button";
-  editBtn.className = "btn-card-action";
-  editBtn.textContent = "Edit";
-  editBtn.addEventListener("click", function () {
-    openAssignmentDialog("edit", assignment);
-  });
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn-card-action";
+    editBtn.textContent = "Edit";
+    editBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      openAssignmentDialog("edit", assignment);
+    });
 
-  const deleteBtn = document.createElement("button");
-  deleteBtn.type = "button";
-  deleteBtn.className = "btn-card-action btn-card-delete";
-  deleteBtn.textContent = "Delete";
-  deleteBtn.addEventListener("click", function () {
-    if (confirm(`Are you sure you want to delete "${assignment.title}"?`)) {
-      deleteAssignment(assignment.id);
-      renderApp();
-    }
-  });
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn-card-action btn-card-delete";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (confirm(`Are you sure you want to delete "${assignment.title}"?`)) {
+        deleteAssignment(assignment.id);
+        renderApp();
+      }
+    });
 
-  actionWrapper.appendChild(editBtn);
-  actionWrapper.appendChild(deleteBtn);
-  header.appendChild(actionWrapper);
+    actionWrapper.appendChild(editBtn);
+    actionWrapper.appendChild(deleteBtn);
+    header.appendChild(actionWrapper);
+  }
 
   // Title (rendered safely with textContent)
   const titleEl = document.createElement("h3");
@@ -162,6 +206,176 @@ function createAssignmentCard(assignment) {
   return card;
 }
 
+// Toggles the selection state of an assignment card.
+function toggleCardSelection(id) {
+  if (selectedAssignmentIds.has(id)) {
+    selectedAssignmentIds.delete(id);
+  } else {
+    selectedAssignmentIds.add(id);
+  }
+  updateSelectActionBar();
+
+  const card = document.getElementById(`card-${id}`);
+  if (card) {
+    const isSelected = selectedAssignmentIds.has(id);
+    card.classList.toggle("is-selected", isSelected);
+    card.setAttribute("aria-checked", isSelected ? "true" : "false");
+    const chk = card.querySelector(".card-select-checkbox");
+    if (chk) chk.checked = isSelected;
+  }
+}
+
+// Updates the select count and button states in the sticky bottom action bar.
+function updateSelectActionBar() {
+  const countText = document.getElementById("select-count-text");
+  const deleteBtn = document.getElementById("btn-delete-selected");
+  if (countText) {
+    countText.textContent = `${selectedAssignmentIds.size} selected`;
+  }
+  if (deleteBtn) {
+    deleteBtn.disabled = selectedAssignmentIds.size === 0;
+  }
+}
+
+// Enables or disables select mode on the Planner tab.
+function setSelectMode(enabled) {
+  isSelectMode = enabled;
+  const btn = document.getElementById("btn-select-mode");
+  if (btn) {
+    btn.setAttribute("aria-pressed", isSelectMode ? "true" : "false");
+    btn.classList.toggle("is-active", isSelectMode);
+  }
+
+  if (!isSelectMode) {
+    selectedAssignmentIds.clear();
+  }
+
+  renderApp();
+
+  if (!isSelectMode && btn && typeof btn.focus === "function") {
+    btn.focus();
+  }
+}
+
+// Opens the modal dialog to confirm deleting the selected assignments.
+function openBulkDeleteConfirm() {
+  if (selectedAssignmentIds.size === 0) return;
+  lastBulkDeleteFocusedElement = document.activeElement;
+  const dialog = document.getElementById("bulk-delete-dialog");
+  const msgEl = document.getElementById("bulk-delete-message");
+  const allAssignments = getStoredAssignments();
+  const selectedItems = allAssignments.filter(a => selectedAssignmentIds.has(a.id));
+  const count = selectedItems.length;
+
+  const courseCounts = {};
+  selectedItems.forEach(item => {
+    const course = getCourseById(item.courseId);
+    const code = course ? course.code : "Unknown";
+    courseCounts[code] = (courseCounts[code] || 0) + 1;
+  });
+  const breakdownParts = Object.entries(courseCounts).map(([code, cnt]) => `${code}: ${cnt}`);
+  const breakdownStr = breakdownParts.length > 0 ? ` (${breakdownParts.join(", ")})` : "";
+  msgEl.textContent = `Delete ${count} assignment${count !== 1 ? "s" : ""}${breakdownStr}? You can undo for 10 seconds.`;
+
+  dialog.showModal();
+  const cancelBtn = document.getElementById("bulk-delete-cancel-btn");
+  if (cancelBtn) cancelBtn.focus();
+}
+
+// Closes the bulk delete confirmation dialog and restores focus.
+function closeBulkDeleteConfirm() {
+  const dialog = document.getElementById("bulk-delete-dialog");
+  if (dialog && dialog.open) {
+    dialog.close();
+  }
+  if (lastBulkDeleteFocusedElement && typeof lastBulkDeleteFocusedElement.focus === "function") {
+    lastBulkDeleteFocusedElement.focus();
+  }
+}
+
+// Executes bulk deletion of selected items, updates undo state, and triggers 10s toast.
+function handleBulkDeleteExecute() {
+  const idsToDelete = Array.from(selectedAssignmentIds);
+  if (idsToDelete.length === 0) return;
+
+  const allAssignments = getStoredAssignments();
+  const deletedRecords = allAssignments.filter(a => selectedAssignmentIds.has(a.id));
+  const externalIds = deletedRecords.filter(a => a.externalId).map(a => a.externalId);
+
+  // Atomic single write in storage.js
+  bulkDeleteAssignments(idsToDelete);
+
+  // Store in memory for undo (replaces any previous undo)
+  lastUndoDeletedItems = deletedRecords;
+  lastUndoExternalIds = externalIds;
+
+  // Clear selection and exit select mode
+  selectedAssignmentIds.clear();
+  isSelectMode = false;
+
+  const dialog = document.getElementById("bulk-delete-dialog");
+  if (dialog && dialog.open) {
+    dialog.close();
+  }
+
+  renderApp();
+  showUndoToast(deletedRecords.length);
+}
+
+// Shows the 10-second undo toast after bulk deletion.
+function showUndoToast(count) {
+  const toast = document.getElementById("undo-toast");
+  const textEl = document.getElementById("undo-toast-text");
+  const undoBtn = document.getElementById("btn-undo-delete");
+  if (!toast || !textEl) return;
+
+  if (undoToastTimeout) {
+    clearTimeout(undoToastTimeout);
+    undoToastTimeout = null;
+  }
+
+  textEl.textContent = `Deleted ${count} assignment${count !== 1 ? "s" : ""}.`;
+  toast.style.display = "flex";
+
+  if (undoBtn && typeof undoBtn.focus === "function") {
+    undoBtn.focus();
+  }
+
+  undoToastTimeout = setTimeout(function () {
+    hideUndoToast();
+    lastUndoDeletedItems = null;
+    lastUndoExternalIds = null;
+  }, 10000);
+}
+
+// Hides the undo toast bar.
+function hideUndoToast() {
+  const toast = document.getElementById("undo-toast");
+  if (toast) {
+    toast.style.display = "none";
+  }
+  if (undoToastTimeout) {
+    clearTimeout(undoToastTimeout);
+    undoToastTimeout = null;
+  }
+}
+
+// Handles user clicking the Undo button to restore deleted items.
+function handleUndoDelete() {
+  if (lastUndoDeletedItems && lastUndoDeletedItems.length > 0) {
+    bulkRestoreAssignments(lastUndoDeletedItems, lastUndoExternalIds);
+    hideUndoToast();
+    lastUndoDeletedItems = null;
+    lastUndoExternalIds = null;
+    renderApp();
+
+    const btnSelect = document.getElementById("btn-select-mode");
+    if (btnSelect && typeof btnSelect.focus === "function") {
+      btnSelect.focus();
+    }
+  }
+}
+
 // Populates a section with sorted cards or displays an empty notice.
 function renderSection(containerId, countId, itemsList) {
   const container = document.getElementById(containerId);
@@ -169,6 +383,48 @@ function renderSection(containerId, countId, itemsList) {
 
   container.innerHTML = "";
   countBadge.textContent = itemsList.length;
+
+  // Clean up any previously attached select-mode controls from section header
+  const section = container.closest(".section");
+  if (section) {
+    const titleEl = section.querySelector(".section-title");
+    const oldControls = section.querySelectorAll(".section-select-controls, .select-all-overdue-wrap");
+    oldControls.forEach(el => el.remove());
+
+    if (isSelectMode && itemsList.length > 0) {
+      const controlsWrap = document.createElement("span");
+      controlsWrap.className = "section-select-controls";
+
+      const selectAllBtn = document.createElement("button");
+      selectAllBtn.type = "button";
+      selectAllBtn.className = "section-select-all-btn";
+      selectAllBtn.textContent = "Select all";
+      selectAllBtn.addEventListener("click", function () {
+        itemsList.forEach(item => selectedAssignmentIds.add(item.id));
+        renderApp();
+      });
+      controlsWrap.appendChild(selectAllBtn);
+      if (titleEl) {
+        titleEl.appendChild(controlsWrap);
+      }
+
+      if (section.id === "section-overdue") {
+        const overdueWrap = document.createElement("div");
+        overdueWrap.className = "select-all-overdue-wrap";
+
+        const overdueBtn = document.createElement("button");
+        overdueBtn.type = "button";
+        overdueBtn.className = "btn-secondary btn-sm select-all-overdue-btn";
+        overdueBtn.textContent = "Select all overdue";
+        overdueBtn.addEventListener("click", function () {
+          itemsList.forEach(item => selectedAssignmentIds.add(item.id));
+          renderApp();
+        });
+        overdueWrap.appendChild(overdueBtn);
+        section.insertBefore(overdueWrap, container);
+      }
+    }
+  }
 
   if (itemsList.length === 0) {
     const emptyMsg = document.createElement("div");
@@ -426,9 +682,13 @@ function openCalendarDialog() {
   const previewTarget = document.getElementById("calendar-preview-target");
   const inputGrid = document.querySelector(".ics-input-grid");
   const dialogFooter = document.getElementById("calendar-dialog-footer");
+  const cutoffContainer = document.getElementById("ics-cutoff-container");
+  const cutoffInput = document.getElementById("calendar-cutoff-date");
 
   if (fileInput) fileInput.value = "";
   if (pasteInput) pasteInput.value = "";
+  if (cutoffInput) cutoffInput.value = "";
+  if (cutoffContainer) cutoffContainer.style.display = "none";
   if (inputGrid) inputGrid.style.display = "grid";
   if (dialogFooter) dialogFooter.style.display = "flex";
   if (errorMsg) {
@@ -456,9 +716,13 @@ function closeCalendarDialog() {
   const previewTarget = document.getElementById("calendar-preview-target");
   const inputGrid = document.querySelector(".ics-input-grid");
   const dialogFooter = document.getElementById("calendar-dialog-footer");
+  const cutoffContainer = document.getElementById("ics-cutoff-container");
+  const cutoffInput = document.getElementById("calendar-cutoff-date");
 
   if (fileInput) fileInput.value = "";
   if (pasteInput) pasteInput.value = "";
+  if (cutoffInput) cutoffInput.value = "";
+  if (cutoffContainer) cutoffContainer.style.display = "none";
   if (inputGrid) inputGrid.style.display = "grid";
   if (dialogFooter) dialogFooter.style.display = "flex";
   if (errorMsg) {
@@ -486,8 +750,10 @@ function showCalendarError(message) {
   const previewTarget = document.getElementById("calendar-preview-target");
   const inputGrid = document.querySelector(".ics-input-grid");
   const dialogFooter = document.getElementById("calendar-dialog-footer");
+  const cutoffContainer = document.getElementById("ics-cutoff-container");
 
   if (inputGrid) inputGrid.style.display = "grid";
+  if (cutoffContainer) cutoffContainer.style.display = "none";
   if (dialogFooter) dialogFooter.style.display = "flex";
 
   if (errorMsg) {
@@ -502,15 +768,17 @@ function showCalendarError(message) {
 }
 
 // Handles transitioning from the preview screen to the confirmation summary screen.
-function handleReviewImport(parseResult, courseMappings, rowActions) {
+function handleReviewImport(parseResult, courseMappings, rowActions, cutoffDate, userModifiedRows) {
   const previewTarget = document.getElementById("calendar-preview-target");
   const dialogFooter = document.getElementById("calendar-dialog-footer");
   const inputGrid = document.querySelector(".ics-input-grid");
+  const cutoffContainer = document.getElementById("ics-cutoff-container");
 
-  const importPlan = prepareImportPlan(parseResult, courseMappings, rowActions);
+  const importPlan = prepareImportPlan(parseResult, courseMappings, rowActions, cutoffDate);
 
-  // Hide the raw input options and the outer preview dialog footer while reviewing the confirm summary
+  // Hide the raw input options, cutoff container, and the outer preview dialog footer while reviewing the confirm summary
   if (inputGrid) inputGrid.style.display = "none";
+  if (cutoffContainer) cutoffContainer.style.display = "none";
   if (dialogFooter) dialogFooter.style.display = "none";
 
   const onConfirm = () => {
@@ -521,10 +789,11 @@ function handleReviewImport(parseResult, courseMappings, rowActions) {
 
   const onBack = () => {
     if (inputGrid) inputGrid.style.display = "grid";
+    if (cutoffContainer) cutoffContainer.style.display = "block";
     if (dialogFooter) dialogFooter.style.display = "flex";
     if (previewTarget) {
       previewTarget.innerHTML = "";
-      const previewDOM = buildCalendarPreviewDOM(parseResult, handleReviewImport, courseMappings, rowActions);
+      const previewDOM = buildCalendarPreviewDOM(parseResult, handleReviewImport, courseMappings, rowActions, cutoffDate, userModifiedRows);
       previewTarget.appendChild(previewDOM);
     }
   };
@@ -546,6 +815,7 @@ function processCalendarText(rawText) {
   const previewTarget = document.getElementById("calendar-preview-target");
   const inputGrid = document.querySelector(".ics-input-grid");
   const dialogFooter = document.getElementById("calendar-dialog-footer");
+  const cutoffContainer = document.getElementById("ics-cutoff-container");
 
   if (inputGrid) inputGrid.style.display = "grid";
   if (dialogFooter) dialogFooter.style.display = "flex";
@@ -554,6 +824,9 @@ function processCalendarText(rawText) {
     if (errorMsg) {
       errorMsg.style.display = "none";
       errorMsg.textContent = "";
+    }
+    if (cutoffContainer) {
+      cutoffContainer.style.display = "none";
     }
     if (previewTarget) {
       previewTarget.innerHTML = "";
@@ -575,17 +848,22 @@ function processCalendarText(rawText) {
     if (previewTarget) {
       previewTarget.innerHTML = "";
       if (result.totalEvents === 0) {
+        if (cutoffContainer) cutoffContainer.style.display = "none";
         const noEventsMsg = document.createElement("div");
         noEventsMsg.className = "empty-message";
         noEventsMsg.textContent = "No VEVENT or VTODO components found in this calendar file.";
         previewTarget.appendChild(noEventsMsg);
       } else {
-        const previewDOM = buildCalendarPreviewDOM(result, handleReviewImport);
+        if (cutoffContainer) cutoffContainer.style.display = "block";
+        const cutoffInput = document.getElementById("calendar-cutoff-date");
+        const cutoffDate = cutoffInput ? cutoffInput.value : "";
+        const previewDOM = buildCalendarPreviewDOM(result, handleReviewImport, null, null, cutoffDate);
         previewTarget.appendChild(previewDOM);
       }
       previewTarget.style.display = "block";
     }
   } catch (err) {
+    if (cutoffContainer) cutoffContainer.style.display = "none";
     showCalendarError(err.message || "Failed to parse calendar data.");
   }
 }
@@ -671,6 +949,39 @@ function renderApp() {
   const filtered = allAssignments.filter(item => {
     return selectedCourse === "all" || item.courseId === selectedCourse;
   });
+  currentFilteredAssignments = filtered;
+
+  // Prune any deleted assignment IDs from selection
+  const existingIds = new Set(allAssignments.map(a => a.id));
+  for (const id of selectedAssignmentIds) {
+    if (!existingIds.has(id)) {
+      selectedAssignmentIds.delete(id);
+    }
+  }
+
+  // Update select mode button and bottom action bar
+  const selectBtn = document.getElementById("btn-select-mode");
+  const actionBar = document.getElementById("select-action-bar");
+  const selectCountText = document.getElementById("select-count-text");
+  const btnDeleteSelected = document.getElementById("btn-delete-selected");
+  const mainCol = document.querySelector(".main-column");
+
+  if (selectBtn) {
+    selectBtn.setAttribute("aria-pressed", isSelectMode ? "true" : "false");
+    selectBtn.classList.toggle("is-active", isSelectMode);
+  }
+  if (actionBar) {
+    actionBar.style.display = isSelectMode ? "block" : "none";
+  }
+  if (selectCountText) {
+    selectCountText.textContent = `${selectedAssignmentIds.size} selected`;
+  }
+  if (btnDeleteSelected) {
+    btnDeleteSelected.disabled = selectedAssignmentIds.size === 0;
+  }
+  if (mainCol) {
+    mainCol.classList.toggle("has-select-bar", isSelectMode);
+  }
 
   // Buckets
   const overdueList = [];
@@ -996,9 +1307,76 @@ document.addEventListener("DOMContentLoaded", function () {
     window.initScheduleControls();
   }
 
-  // Initialize course controls (Course dialog controls)
-  if (typeof window.initCourseControls === "function") {
-    window.initCourseControls();
+  // Planner Select Mode and Bulk Actions
+  const btnSelectMode = document.getElementById("btn-select-mode");
+  if (btnSelectMode) {
+    btnSelectMode.addEventListener("click", function () {
+      setSelectMode(!isSelectMode);
+    });
+  }
+
+  const btnSelectAllView = document.getElementById("btn-select-all-view");
+  if (btnSelectAllView) {
+    btnSelectAllView.addEventListener("click", function () {
+      currentFilteredAssignments.forEach(item => selectedAssignmentIds.add(item.id));
+      renderApp();
+    });
+  }
+
+  const btnSelectClear = document.getElementById("btn-select-clear");
+  if (btnSelectClear) {
+    btnSelectClear.addEventListener("click", function () {
+      selectedAssignmentIds.clear();
+      renderApp();
+    });
+  }
+
+  const btnDeleteSelected = document.getElementById("btn-delete-selected");
+  if (btnDeleteSelected) {
+    btnDeleteSelected.addEventListener("click", function () {
+      openBulkDeleteConfirm();
+    });
+  }
+
+  const btnSelectDone = document.getElementById("btn-select-done");
+  if (btnSelectDone) {
+    btnSelectDone.addEventListener("click", function () {
+      setSelectMode(false);
+    });
+  }
+
+  const btnUndoDelete = document.getElementById("btn-undo-delete");
+  if (btnUndoDelete) {
+    btnUndoDelete.addEventListener("click", function () {
+      handleUndoDelete();
+    });
+  }
+
+  // Bulk Delete Confirmation Dialog Controls
+  const bulkDeleteDialog = document.getElementById("bulk-delete-dialog");
+  const bulkDeleteCancelBtn = document.getElementById("bulk-delete-cancel-btn");
+  const bulkDeleteCloseBtn = document.getElementById("bulk-delete-close-btn");
+  const bulkDeleteConfirmBtn = document.getElementById("bulk-delete-confirm-btn");
+
+  if (bulkDeleteCancelBtn) bulkDeleteCancelBtn.addEventListener("click", closeBulkDeleteConfirm);
+  if (bulkDeleteCloseBtn) bulkDeleteCloseBtn.addEventListener("click", closeBulkDeleteConfirm);
+  if (bulkDeleteConfirmBtn) bulkDeleteConfirmBtn.addEventListener("click", handleBulkDeleteExecute);
+
+  if (bulkDeleteDialog) {
+    bulkDeleteDialog.addEventListener("mousedown", function (event) {
+      isBulkDeleteBackdropMouseDown = (event.target === bulkDeleteDialog);
+    });
+    bulkDeleteDialog.addEventListener("click", function (event) {
+      if (isBulkDeleteBackdropMouseDown && event.target === bulkDeleteDialog) {
+        closeBulkDeleteConfirm();
+      }
+      isBulkDeleteBackdropMouseDown = false;
+    });
+    bulkDeleteDialog.addEventListener("close", function () {
+      if (lastBulkDeleteFocusedElement && typeof lastBulkDeleteFocusedElement.focus === "function") {
+        lastBulkDeleteFocusedElement.focus();
+      }
+    });
   }
 
   // First initial render

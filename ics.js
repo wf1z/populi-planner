@@ -715,14 +715,40 @@ function findExistingAssignmentDuplicate(event, guessedCode, existingAssignments
   return null;
 }
 
+// Checks whether an event date falls before a specified cutoff date key (YYYY-MM-DD).
+function isEventBeforeCutoff(event, cutoffDate) {
+  if (!cutoffDate || !event) return false;
+  const eventDateKey = (event.dtStart && event.dtStart.dateKey) || (event.due && event.due.dateKey) || null;
+  if (!eventDateKey) return false;
+  return eventDateKey < cutoffDate;
+}
+
 // Builds the DOM preview table, course mappings, group toggles, and review import action.
-function buildCalendarPreviewDOM(parseResult, onReviewImport, savedCourseMappings, savedRowActions) {
+function buildCalendarPreviewDOM(
+  parseResult,
+  onReviewImport,
+  savedCourseMappings,
+  savedRowActions,
+  savedCutoffDate,
+  savedUserModifiedRows
+) {
   const container = document.createElement("div");
   container.className = "ics-preview-container";
 
   const existingAssignments = typeof getStoredAssignments === "function" ? getStoredAssignments() : [];
   const existingCourses = typeof getStoredCourses === "function" ? getStoredCourses() : [];
   const ignoredUIDs = typeof getIgnoredUIDs === "function" ? new Set(getIgnoredUIDs()) : new Set();
+
+  const cutoffInput = document.getElementById("calendar-cutoff-date");
+  const cutoffTodayBtn = document.getElementById("calendar-cutoff-today-btn");
+  const userModifiedRows = savedUserModifiedRows ? new Set(savedUserModifiedRows) : new Set();
+  let cutoffDate = (savedCutoffDate !== undefined)
+    ? savedCutoffDate
+    : (cutoffInput ? cutoffInput.value : "");
+
+  if (cutoffInput && savedCutoffDate !== undefined) {
+    cutoffInput.value = savedCutoffDate;
+  }
 
   // 1. Prepare course mapping state per unique detected code
   const uniqueGuessedCodes = [];
@@ -761,7 +787,7 @@ function buildCalendarPreviewDOM(parseResult, onReviewImport, savedCourseMapping
     }
   });
 
-  // Default row action choices
+  // Default row action choices (considering cutoff date)
   const rowActionChoices = savedRowActions ? [...savedRowActions] : parseResult.events.map(item => {
     if (item.isDuplicate || item.isPreviouslyIgnored) {
       return "skip";
@@ -770,6 +796,9 @@ function buildCalendarPreviewDOM(parseResult, onReviewImport, savedCourseMapping
       return "class";
     }
     if (item.eventType === "one-time") {
+      if (isEventBeforeCutoff(item, cutoffDate)) {
+        return "skip";
+      }
       return "assignment";
     }
     return "skip";
@@ -919,6 +948,7 @@ function buildCalendarPreviewDOM(parseResult, onReviewImport, savedCourseMapping
   function setAllGroupAction(groupType, newAction) {
     parseResult.events.forEach((item, idx) => {
       if (item.eventType === groupType) {
+        userModifiedRows.add(idx);
         rowActionChoices[idx] = newAction;
         const select = table.querySelector(`select[data-row-idx="${idx}"]`);
         if (select) {
@@ -961,6 +991,7 @@ function buildCalendarPreviewDOM(parseResult, onReviewImport, savedCourseMapping
 
   parseResult.events.forEach((item, idx) => {
     const tr = document.createElement("tr");
+    tr.dataset.eventIdx = idx;
 
     // Title cell
     const tdTitle = document.createElement("td");
@@ -984,6 +1015,15 @@ function buildCalendarPreviewDOM(parseResult, onReviewImport, savedCourseMapping
       dupBadge.className = "ics-pill ics-pill-duplicate";
       dupBadge.textContent = "Already in your planner";
       tdTitle.appendChild(dupBadge);
+    }
+
+    // Cutoff indicator pill for assignment rows
+    if ((item.eventType === "one-time" || item.componentType === "VTODO") && isEventBeforeCutoff(item, cutoffDate)) {
+      const cutoffPill = document.createElement("span");
+      cutoffPill.className = "ics-pill ics-pill-warning ics-cutoff-pill";
+      cutoffPill.dataset.rowIdx = idx;
+      cutoffPill.textContent = "Before cutoff";
+      tdTitle.appendChild(cutoffPill);
     }
 
     if (item.eventType === "repeating" && item.recurrenceInfo) {
@@ -1046,6 +1086,7 @@ function buildCalendarPreviewDOM(parseResult, onReviewImport, savedCourseMapping
 
     actionSelect.value = rowActionChoices[idx];
     actionSelect.addEventListener("change", function () {
+      userModifiedRows.add(idx);
       rowActionChoices[idx] = actionSelect.value;
     });
 
@@ -1064,6 +1105,58 @@ function buildCalendarPreviewDOM(parseResult, onReviewImport, savedCourseMapping
   table.appendChild(tbody);
   tableWrapper.appendChild(table);
   container.appendChild(tableWrapper);
+
+  // Function to re-evaluate rows when cutoff date changes
+  function updateCutoffRows(newCutoff) {
+    cutoffDate = newCutoff;
+    parseResult.events.forEach((item, idx) => {
+      // Affects assignment rows only, never class meetings!
+      if (item.eventType === "one-time" || item.componentType === "VTODO") {
+        const rowTr = table.querySelector(`tr[data-event-idx="${idx}"]`);
+        const tdTitle = rowTr ? rowTr.querySelector("td:first-child") : null;
+        const select = table.querySelector(`select[data-row-idx="${idx}"]`);
+        const isCutoff = isEventBeforeCutoff(item, newCutoff);
+
+        // Update Before cutoff pill
+        const existingPill = tdTitle ? tdTitle.querySelector(`.ics-cutoff-pill[data-row-idx="${idx}"]`) : null;
+        if (isCutoff) {
+          if (!existingPill && tdTitle) {
+            const pill = document.createElement("span");
+            pill.className = "ics-pill ics-pill-warning ics-cutoff-pill";
+            pill.dataset.rowIdx = idx;
+            pill.textContent = "Before cutoff";
+            tdTitle.appendChild(pill);
+          }
+        } else if (existingPill) {
+          existingPill.remove();
+        }
+
+        // Update default action ONLY IF not changed by hand
+        if (!userModifiedRows.has(idx)) {
+          if (isCutoff) {
+            rowActionChoices[idx] = "skip";
+            if (select) select.value = "skip";
+          } else if (!item.isDuplicate && !item.isPreviouslyIgnored) {
+            rowActionChoices[idx] = "assignment";
+            if (select) select.value = "assignment";
+          }
+        }
+      }
+    });
+  }
+
+  if (cutoffInput) {
+    cutoffInput.oninput = function () {
+      updateCutoffRows(cutoffInput.value);
+    };
+  }
+  if (cutoffTodayBtn) {
+    cutoffTodayBtn.onclick = function () {
+      const todayStr = formatLocalYYYYMMDD(new Date());
+      cutoffInput.value = todayStr;
+      updateCutoffRows(todayStr);
+    };
+  }
 
   // 6. Collapsible Raw Details (first 5 events)
   const details = document.createElement("details");
@@ -1127,7 +1220,7 @@ function buildCalendarPreviewDOM(parseResult, onReviewImport, savedCourseMapping
   btnReview.textContent = "Review & Import...";
   btnReview.addEventListener("click", function () {
     if (typeof onReviewImport === "function") {
-      onReviewImport(parseResult, courseMappings, rowActionChoices);
+      onReviewImport(parseResult, courseMappings, rowActionChoices, cutoffDate, Array.from(userModifiedRows));
     }
   });
 
@@ -1138,7 +1231,7 @@ function buildCalendarPreviewDOM(parseResult, onReviewImport, savedCourseMapping
 }
 
 // Prepares the full import plan comparing against existing stored items.
-function prepareImportPlan(parseResult, courseMappings, rowActions) {
+function prepareImportPlan(parseResult, courseMappings, rowActions, cutoffDate) {
   const existingAssignments = typeof getStoredAssignments === "function" ? getStoredAssignments() : [];
   const existingClasses = typeof getStoredClasses === "function" ? getStoredClasses() : [];
   const existingCourses = typeof getStoredCourses === "function" ? getStoredCourses() : [];
@@ -1222,6 +1315,7 @@ function prepareImportPlan(parseResult, courseMappings, rowActions) {
   const matchedExistingAssignments = [];
   const meetingsToGroup = [];
   const skippedUIDs = [];
+  let cutoffSkippedCount = 0;
 
   // Track all external IDs present in this imported file
   const fileExternalIds = new Set();
@@ -1232,6 +1326,9 @@ function prepareImportPlan(parseResult, courseMappings, rowActions) {
 
     if (action === "skip") {
       skippedUIDs.push(item.uid);
+      if (cutoffDate && isEventBeforeCutoff(item, cutoffDate)) {
+        cutoffSkippedCount++;
+      }
       if (item.isDuplicate && item.matchedAssignmentId) {
         matchedExistingAssignments.push({
           id: item.matchedAssignmentId,
@@ -1246,6 +1343,11 @@ function prepareImportPlan(parseResult, courseMappings, rowActions) {
       if (item.eventType === "repeating" && item.recurrenceInfo && item.recurrenceInfo.occurrences.length > 0) {
         item.recurrenceInfo.occurrences.forEach(occ => {
           const occExternalId = `${item.uid}#${occ.dateKey}`;
+          if (cutoffDate && occ.dateKey < cutoffDate) {
+            cutoffSkippedCount++;
+            skippedUIDs.push(occExternalId);
+            return;
+          }
           fileExternalIds.add(occExternalId);
 
           const existing = existingAssignments.find(a => a.externalId === occExternalId);
@@ -1423,6 +1525,8 @@ function prepareImportPlan(parseResult, courseMappings, rowActions) {
     updatedClasses: updatedClasses,
     skippedUIDs: skippedUIDs,
     disappearedCount: disappearedCount,
+    cutoffSkippedCount: cutoffSkippedCount,
+    cutoffDate: cutoffDate || null,
     summaryHeadline: summaryHeadline
   };
 }
@@ -1556,6 +1660,12 @@ function buildConfirmSummaryDOM(importPlan, onConfirm, onBack, onCancel) {
   if (importPlan.disappearedCount > 0) {
     const li = document.createElement("li");
     li.textContent = `${importPlan.disappearedCount} existing planner item(s) no longer in this calendar file will remain safely untouched.`;
+    noteUl.appendChild(li);
+  }
+
+  if (importPlan.cutoffSkippedCount > 0) {
+    const li = document.createElement("li");
+    li.textContent = `${importPlan.cutoffSkippedCount} assignment(s) due before ${importPlan.cutoffDate} were skipped by the cutoff date and will be remembered.`;
     noteUl.appendChild(li);
   }
 

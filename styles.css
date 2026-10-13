@@ -1849,6 +1849,230 @@ dialog.modal-dialog::backdrop {
 }
 
 /* ==========================================================================
+   SELECT MODE & BULK ACTIONS (Part 1)
+   ========================================================================== */
+.btn-select-mode {
+  padding: 6px 14px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-select-mode.is-active,
+.btn-select-mode[aria-pressed="true"] {
+  background-color: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+
+.assignment-card.is-select-mode {
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.assignment-card.is-select-mode:hover {
+  border-color: var(--primary);
+}
+
+.assignment-card.is-select-mode:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.assignment-card.is-selected {
+  border-color: var(--primary);
+  background-color: rgba(224, 184, 200, 0.08);
+}
+
+.card-select-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+.section-select-controls {
+  margin-left: auto;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.section-select-all-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.section-select-all-btn:hover {
+  color: var(--primary-hover);
+}
+
+.select-all-overdue-wrap {
+  margin-bottom: var(--space-sm);
+}
+
+.select-all-overdue-btn {
+  font-weight: 600;
+}
+
+/* Sticky Bottom Action Bar */
+.select-action-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: var(--card-bg);
+  border-top: 1px solid var(--card-border);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.6);
+  z-index: 90;
+  padding: var(--space-sm) var(--space-md);
+}
+
+.select-action-bar-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.select-count-text {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-main);
+}
+
+.select-action-bar-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.main-column.has-select-bar {
+  padding-bottom: 72px;
+}
+
+/* Danger Button Styling */
+.btn-danger {
+  background-color: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
+  padding: 6px 14px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(1.2);
+}
+
+.btn-danger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Undo Toast */
+.undo-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--card-bg);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  z-index: 150;
+  font-size: 0.92rem;
+  color: var(--text-main);
+}
+
+.undo-toast-text {
+  font-weight: 500;
+}
+
+.btn-undo {
+  background-color: var(--primary);
+  color: var(--on-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.btn-undo:hover {
+  background-color: var(--primary-hover);
+}
+
+.btn-undo:focus-visible {
+  outline: 2px solid var(--text-main);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   CUTOFF DATE STYLES (Part 2)
+   ========================================================================== */
+.ics-cutoff-container {
+  margin-top: var(--space-md);
+  margin-bottom: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+}
+
+.ics-cutoff-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-xs);
+}
+
+.ics-cutoff-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 0;
+}
+
+.ics-cutoff-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.ics-cutoff-input {
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  width: auto;
+}
+
+.ics-cutoff-pill {
+  font-size: 0.75rem;
+  margin-left: var(--space-xs);
+}
+
+/* ==========================================================================
    RESPONSIVE LAYOUT
    ========================================================================== */
 @media (max-width: 900px) {

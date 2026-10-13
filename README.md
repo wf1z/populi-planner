@@ -380,9 +380,101 @@ Import calendar files (`.ics`) exported from Populi to automatically populate yo
 
 ---
 
+## 📋 Additions: Select Mode & Bulk Delete (Part 1) and Cutoff Date (Part 2)
+
+### 1. Select Mode & Bulk Delete (Planner Tab)
+- **Select Toggle**: An accessible `Select` toggle button (`aria-pressed="false" / "true"`) in the Planner toolbar next to the course filter.
+- **Card Selection Mode**:
+  - Each card replaces its planned checkbox with a high-contrast selection checkbox.
+  - Card Action buttons (Edit & Delete) are hidden.
+  - Clicking anywhere on the card toggles selection.
+  - Leaving select mode clears the selection and restores the standard view without affecting anything else.
+- **Sticky Bottom Action Bar**:
+  - Displays `N selected` (with `aria-live="polite"` announcements).
+  - Quick action buttons: **Select all in view**, **Clear**, **Delete selected** (danger styling, disabled when 0 selected), and **Done**.
+  - Adds dynamic bottom padding to the main column so cards are never obscured.
+- **Header & Section Controls**:
+  - Every section header (*Overdue*, *Today*, *This Week*, *Later*) gains a **Select all** link in select mode.
+  - The *Overdue* section also features a prominent **Select all overdue** button.
+  - All selection actions respect the active course filter.
+- **In-Memory Selection State**:
+  - Stored in a JavaScript `Set` of assignment IDs. Survives `renderApp()` redraws, tab switches, and filter changes. Non-existent IDs are automatically pruned on redraw.
+- **Confirmation Modal**:
+  - Displays the total count and a clear course breakdown (e.g. `Delete 23 assignments (THEO 201: 9, BIBL 110: 14)? You can undo for 10 seconds.`).
+  - Safe backdrop click, Cancel button, and `Esc` key default to cancelling without changes.
+- **Atomic Bulk Delete**:
+  - `bulkDeleteAssignments(ids)` executes a single localStorage write.
+  - Any deleted assignments possessing an `externalId` have their IDs recorded in `populi_ignored_uids` so future calendar re-imports do not re-import them.
+- **10-Second Undo Toast**:
+  - Displays a status bar: `"Deleted N assignments. Undo"` with `aria-live="polite"`.
+  - Clicking **Undo** restores the assignments with identical state (including planned status and badges) and removes their external IDs from `populi_ignored_uids`.
+  - If another bulk delete occurs within the 10-second window, the new one replaces the old undo.
+
+### 2. Cutoff Date for Calendar Import
+- **Cutoff Date Input & Today Button**:
+  - Located in the calendar preview dialog: *"Don't import assignments due before:"* with a convenient **Today** button. Empty by default.
+  - Strictly targets assignments (one-time, VTODO, and repeating events mapped to assignments per occurrence); **never** affects class meetings.
+- **Per-Occurrence Expansion**:
+  - Repeating events mapped to assignments check each occurrence date. Occurrences before the cutoff date are dropped.
+- **Preview Indicators**:
+  - Rows before the cutoff default to **Skip** with a subtle `"Before cutoff"` badge.
+  - Users can still manually switch individual rows to **Assignment / due date**.
+  - Changing the cutoff date updates defaults without overwriting manually modified rows.
+- **Summary & Preservation**:
+  - The confirm summary displays how many assignments were skipped by the cutoff.
+  - Skipped items (including repeating occurrences in `UID#date` format) are stored in `populi_ignored_uids` on confirm.
+
+---
+
+## 🧪 Testing Walkthrough for Part 1 & Part 2
+
+### Test 7: Select Mode, Course Filtering & Section Selection
+1. Open the Planner tab with sample data loaded.
+2. Click the **Select** button in the toolbar:
+   - Notice the button switches to active (`aria-pressed="true"`).
+   - Card checkboxes switch to selection mode, and Edit/Delete buttons hide.
+   - The sticky action bar appears at the bottom displaying `0 selected`.
+3. Click anywhere on two different cards:
+   - Both cards highlight with border color and background tint, and the count updates to `2 selected`.
+4. Click the **Select all** link in the "Today" section:
+   - All cards in the Today section become selected.
+5. In the Overdue section, click **Select all overdue**:
+   - All overdue assignments become selected.
+6. Change the course filter to `THEO 201`:
+   - Click **Select all in view**: only `THEO 201` items in view are selected.
+   - Switch back to `All Courses`: verify previously selected `THEO 201` items remain selected.
+
+### Test 8: Bulk Delete Confirmation & 10-Second Undo Toast
+1. With several assignments selected across multiple courses, click **Delete selected** in the bottom action bar.
+2. Observe the Confirmation Dialog:
+   - Verifies the exact count and course breakdown (e.g. `Delete 4 assignments (THEO 201: 2, BIBL 110: 2)? You can undo for 10 seconds.`).
+   - Press `Esc` or click the Cancel button: dialog closes without deleting anything.
+3. Click **Delete selected** again, and click **Delete**:
+   - The items are removed from the Planner and calendar.
+   - Select mode exits.
+   - A bottom toast bar appears: `Deleted 4 assignments. Undo`.
+4. Click **Undo**:
+   - The 4 assignments are immediately restored to the exact sections and state they had previously!
+
+### Test 9: Calendar Import Cutoff Date
+1. Open the **Import Calendar** dialog and paste calendar events with past and future due dates (or use the sample text from Test 1).
+2. Under "Don't import assignments due before:", click **Today** (or pick a future date):
+   - Notice rows with dates before the cutoff receive the `"Before cutoff"` pill and default to **Skip**.
+   - Class meeting rows are unaffected.
+3. Manually change one "Before cutoff" row from **Skip** to **Assignment / due date**:
+   - The row choice is preserved.
+4. Click **Review & Import...**:
+   - In the confirmation summary under *Safety & Preservation*, observe the line:
+     `"X assignment(s) due before YYYY-MM-DD were skipped by the cutoff date and will be remembered."`
+5. Click **Confirm and Save**:
+   - Verify only assignments on or after the cutoff date (plus your manually overridden row) were added to the planner.
+   - Verify `populi_ignored_uids` in localStorage contains the skipped UIDs.
+
+---
+
 ## 🌿 Git Version Control Commands
 
-To commit Stage 2 to your Git repository, run these commands in your terminal:
+*(Note: These commands are for your reference to run manually in your terminal. Do not run via automated agents.)*
 
 ```bash
 # 1. Navigate to the project folder
@@ -391,9 +483,9 @@ cd "C:\Users\supaw\Documents\populi-planner"
 # 2. Check changed and untracked files
 git status
 
-# 3. Stage all modified files (note: *.ics files remain automatically ignored)
+# 3. Stage all modified files
 git add .
 
 # 4. Commit your changes
-git commit -m "Implement Stage 2: Populi Calendar (.ics) course mapping, occurrence expansion, duplicate detection, and in-place re-import"
+git commit -m "Implement Select Mode with Bulk Delete & Undo (Part 1) and Calendar Import Cutoff Date (Part 2)"
 ```
