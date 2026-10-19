@@ -10,6 +10,94 @@ const DATA_VERSION_KEY = "populi_data_version";
 const MIGRATION_SNAPSHOT_KEY = "populi_migration_backup_pre_v3";
 const LEGACY_COLORS_KEY = "populi_course_colors";
 const IGNORED_UIDS_STORAGE_KEY = "populi_ignored_uids";
+const GUEST_BACKUP_KEY = "populi_guest_backup";
+
+// --------------------------------------------------------------------------
+// CLOUD STORAGE & ACTIVE SESSION STATE
+// --------------------------------------------------------------------------
+let currentUser = null;
+let activeCloudData = {
+  courses: null,
+  assignments: null,
+  classes: null,
+  ignoredUIDs: null
+};
+
+// Returns true if the user is authenticated and operating in Cloud mode.
+function isCloudActive() {
+  return Boolean(currentUser && currentUser.uid && window.PlannerFirebase);
+}
+
+// Configures the active storage user (called on auth state changes).
+function setStorageUser(user) {
+  currentUser = user;
+  if (user && user.uid) {
+    // Attempt to load user-scoped local offline cache
+    const cacheKey = `populi_cloud_cache_${user.uid}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        activeCloudData = {
+          courses: parsed.courses || [],
+          assignments: parsed.assignments || [],
+          classes: parsed.classes || [],
+          ignoredUIDs: parsed.ignoredUIDs || []
+        };
+      } catch (e) {
+        activeCloudData = { courses: [], assignments: [], classes: [], ignoredUIDs: [] };
+      }
+    } else {
+      activeCloudData = { courses: [], assignments: [], classes: [], ignoredUIDs: [] };
+    }
+  } else {
+    // Reset to local guest mode
+    activeCloudData = { courses: null, assignments: null, classes: null, ignoredUIDs: null };
+  }
+}
+
+// Updates the active cloud data from Firestore onSnapshot listeners.
+function applyCloudDataUpdate(data) {
+  if (!isCloudActive()) return;
+
+  activeCloudData.courses = data.courses || [];
+  activeCloudData.assignments = data.assignments || [];
+  activeCloudData.classes = data.classes || [];
+  activeCloudData.ignoredUIDs = data.ignoredUIDs || [];
+
+  saveCloudCache();
+
+  // Notify UI
+  if (typeof window.renderApp === "function") {
+    window.renderApp();
+  }
+}
+
+// Saves current cloud cache to localStorage for offline resilience.
+function saveCloudCache() {
+  if (currentUser && currentUser.uid) {
+    try {
+      localStorage.setItem(`populi_cloud_cache_${currentUser.uid}`, JSON.stringify(activeCloudData));
+    } catch (e) {
+      // ignore quota
+    }
+  }
+}
+
+// Returns a complete snapshot of local storage data (courses, assignments, classes, ignoredUIDs).
+function getLocalDataSnapshot() {
+  const cData = localStorage.getItem(COURSES_STORAGE_KEY);
+  const aData = localStorage.getItem(STORAGE_KEY);
+  const mData = localStorage.getItem(CLASSES_STORAGE_KEY);
+  const iData = localStorage.getItem(IGNORED_UIDS_STORAGE_KEY);
+
+  return {
+    courses: cData ? JSON.parse(cData) : [],
+    assignments: aData ? JSON.parse(aData) : [],
+    classes: mData ? JSON.parse(mData) : [],
+    ignoredUIDs: iData ? JSON.parse(iData) : []
+  };
+}
 
 // Normalizes course codes by trimming, collapsing inner spaces, and upper-casing.
 function normalizeCourseCode(code) {
@@ -34,14 +122,25 @@ function generateUniqueId(prefix = "item") {
 // COURSE STORAGE & ALLOCATION HELPERS
 // --------------------------------------------------------------------------
 
-// Retrieves all saved courses from localStorage.
+// Retrieves all saved courses (cloud cache if signed in, or localStorage if local).
 function getStoredCourses() {
+  if (isCloudActive() && Array.isArray(activeCloudData.courses)) {
+    return activeCloudData.courses;
+  }
   const data = localStorage.getItem(COURSES_STORAGE_KEY);
   return data ? JSON.parse(data) : [];
 }
 
-// Saves the entire list of courses into localStorage.
+// Saves the entire list of courses into active storage.
 function saveStoredCourses(courses) {
+  if (isCloudActive()) {
+    activeCloudData.courses = courses;
+    saveCloudCache();
+    if (window.PlannerFirebase && typeof window.PlannerFirebase.saveCourseToCloud === "function") {
+      courses.forEach(c => window.PlannerFirebase.saveCourseToCloud(currentUser.uid, c));
+    }
+    return;
+  }
   localStorage.setItem(COURSES_STORAGE_KEY, JSON.stringify(courses));
 }
 
@@ -147,27 +246,57 @@ function updateCourse(id, data) {
 
 // Deletes a course and cascades deletion to all referencing assignments and class meetings.
 function deleteCourse(id) {
-  const courses = getStoredCourses().filter(c => c.id !== id);
-  const assignments = getStoredAssignments().filter(a => a.courseId !== id);
-  const classes = getStoredClasses().filter(c => c.courseId !== id);
+  const courses = getStoredCourses();
+  const assignments = getStoredAssignments();
+  const classes = getStoredClasses();
 
-  saveStoredCourses(courses);
-  saveStoredAssignments(assignments);
-  saveStoredClasses(classes);
+  const toDeleteAssignments = assignments.filter(a => a.courseId === id);
+  const toDeleteClasses = classes.filter(c => c.courseId === id);
+
+  const remainingCourses = courses.filter(c => c.id !== id);
+  const remainingAssignments = assignments.filter(a => a.courseId !== id);
+  const remainingClasses = classes.filter(c => c.courseId !== id);
+
+  saveStoredCourses(remainingCourses);
+  saveStoredAssignments(remainingAssignments);
+  saveStoredClasses(remainingClasses);
+
+  if (isCloudActive() && window.PlannerFirebase) {
+    if (typeof window.PlannerFirebase.deleteCourseFromCloud === "function") {
+      window.PlannerFirebase.deleteCourseFromCloud(currentUser.uid, id);
+    }
+    if (toDeleteAssignments.length > 0 && typeof window.PlannerFirebase.bulkDeleteAssignmentsFromCloud === "function") {
+      window.PlannerFirebase.bulkDeleteAssignmentsFromCloud(currentUser.uid, toDeleteAssignments.map(a => a.id));
+    }
+    if (toDeleteClasses.length > 0 && typeof window.PlannerFirebase.deleteClassMeetingFromCloud === "function") {
+      toDeleteClasses.forEach(c => window.PlannerFirebase.deleteClassMeetingFromCloud(currentUser.uid, c.id));
+    }
+  }
 }
 
 // --------------------------------------------------------------------------
 // ASSIGNMENT STORAGE HELPERS
 // --------------------------------------------------------------------------
 
-// Retrieves all saved assignments from localStorage.
+// Retrieves all saved assignments (cloud cache if signed in, or localStorage if local).
 function getStoredAssignments() {
+  if (isCloudActive() && Array.isArray(activeCloudData.assignments)) {
+    return activeCloudData.assignments;
+  }
   const data = localStorage.getItem(STORAGE_KEY);
   return data ? JSON.parse(data) : [];
 }
 
-// Saves the entire list of assignments into localStorage.
+// Saves the entire list of assignments into active storage.
 function saveStoredAssignments(assignments) {
+  if (isCloudActive()) {
+    activeCloudData.assignments = assignments;
+    saveCloudCache();
+    if (window.PlannerFirebase && typeof window.PlannerFirebase.saveAssignmentToCloud === "function") {
+      assignments.forEach(a => window.PlannerFirebase.saveAssignmentToCloud(currentUser.uid, a));
+    }
+    return;
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(assignments));
 }
 
@@ -190,6 +319,11 @@ function addAssignment(data) {
 
   assignments.push(newAssignment);
   saveStoredAssignments(assignments);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveAssignmentToCloud === "function") {
+    window.PlannerFirebase.saveAssignmentToCloud(currentUser.uid, newAssignment);
+  }
+
   return newAssignment;
 }
 
@@ -216,6 +350,11 @@ function updateAssignment(id, data, markDueDateChanged) {
 
   assignments[index] = current;
   saveStoredAssignments(assignments);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveAssignmentToCloud === "function") {
+    window.PlannerFirebase.saveAssignmentToCloud(currentUser.uid, current);
+  }
+
   return current;
 }
 
@@ -226,6 +365,10 @@ function toggleAssignmentPlanned(id) {
   if (assignment) {
     assignment.planned = !assignment.planned;
     saveStoredAssignments(assignments);
+
+    if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveAssignmentToCloud === "function") {
+      window.PlannerFirebase.saveAssignmentToCloud(currentUser.uid, assignment);
+    }
   }
 }
 
@@ -238,6 +381,10 @@ function deleteAssignment(id) {
   }
   const remaining = assignments.filter(item => item.id !== id);
   saveStoredAssignments(remaining);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.deleteAssignmentFromCloud === "function") {
+    window.PlannerFirebase.deleteAssignmentFromCloud(currentUser.uid, id);
+  }
 }
 
 // Deletes multiple assignments in one atomic save and records their externalIds in populi_ignored_uids.
@@ -264,6 +411,11 @@ function bulkDeleteAssignments(ids) {
   }
 
   saveStoredAssignments(remaining);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.bulkDeleteAssignmentsFromCloud === "function") {
+    window.PlannerFirebase.bulkDeleteAssignmentsFromCloud(currentUser.uid, Array.from(idSet));
+  }
+
   return {
     deletedAssignments: toDelete,
     externalIdsAdded: externalIdsToAdd
@@ -284,6 +436,10 @@ function bulkRestoreAssignments(itemsToRestore, externalIdsToRemove) {
 
   saveStoredAssignments(assignments);
 
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveAssignmentToCloud === "function") {
+    itemsToRestore.forEach(item => window.PlannerFirebase.saveAssignmentToCloud(currentUser.uid, item));
+  }
+
   if (externalIdsToRemove && externalIdsToRemove.length > 0) {
     removeIgnoredUIDs(externalIdsToRemove);
   }
@@ -293,14 +449,25 @@ function bulkRestoreAssignments(itemsToRestore, externalIdsToRemove) {
 // CLASS MEETING STORAGE HELPERS
 // --------------------------------------------------------------------------
 
-// Retrieves all saved class meetings from localStorage.
+// Retrieves all saved class meetings (cloud cache if signed in, or localStorage if local).
 function getStoredClasses() {
+  if (isCloudActive() && Array.isArray(activeCloudData.classes)) {
+    return activeCloudData.classes;
+  }
   const data = localStorage.getItem(CLASSES_STORAGE_KEY);
   return data ? JSON.parse(data) : [];
 }
 
-// Saves the entire list of class meetings into localStorage.
+// Saves the entire list of class meetings into active storage.
 function saveStoredClasses(classes) {
+  if (isCloudActive()) {
+    activeCloudData.classes = classes;
+    saveCloudCache();
+    if (window.PlannerFirebase && typeof window.PlannerFirebase.saveClassMeetingToCloud === "function") {
+      classes.forEach(c => window.PlannerFirebase.saveClassMeetingToCloud(currentUser.uid, c));
+    }
+    return;
+  }
   localStorage.setItem(CLASSES_STORAGE_KEY, JSON.stringify(classes));
 }
 
@@ -323,6 +490,11 @@ function addClassMeeting(data) {
 
   classes.push(newClass);
   saveStoredClasses(classes);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveClassMeetingToCloud === "function") {
+    window.PlannerFirebase.saveClassMeetingToCloud(currentUser.uid, newClass);
+  }
+
   return newClass;
 }
 
@@ -350,6 +522,11 @@ function updateClassMeeting(id, data) {
 
   classes[index] = current;
   saveStoredClasses(classes);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveClassMeetingToCloud === "function") {
+    window.PlannerFirebase.saveClassMeetingToCloud(currentUser.uid, current);
+  }
+
   return current;
 }
 
@@ -362,6 +539,10 @@ function deleteClassMeeting(id) {
   }
   const remaining = classes.filter(item => item.id !== id);
   saveStoredClasses(remaining);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.deleteClassMeetingFromCloud === "function") {
+    window.PlannerFirebase.deleteClassMeetingFromCloud(currentUser.uid, id);
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -370,13 +551,25 @@ function deleteClassMeeting(id) {
 
 // Retrieves the list of ignored/skipped calendar UIDs.
 function getIgnoredUIDs() {
+  if (isCloudActive() && Array.isArray(activeCloudData.ignoredUIDs)) {
+    return activeCloudData.ignoredUIDs;
+  }
   const data = localStorage.getItem(IGNORED_UIDS_STORAGE_KEY);
   return data ? JSON.parse(data) : [];
 }
 
 // Saves the list of ignored/skipped calendar UIDs.
 function saveIgnoredUIDs(uids) {
-  localStorage.setItem(IGNORED_UIDS_STORAGE_KEY, JSON.stringify(uids || []));
+  const safeList = Array.isArray(uids) ? uids : [];
+  if (isCloudActive()) {
+    activeCloudData.ignoredUIDs = safeList;
+    saveCloudCache();
+    if (window.PlannerFirebase && typeof window.PlannerFirebase.saveSettingsToCloud === "function") {
+      window.PlannerFirebase.saveSettingsToCloud(currentUser.uid, { ignoredUIDs: safeList });
+    }
+    return;
+  }
+  localStorage.setItem(IGNORED_UIDS_STORAGE_KEY, JSON.stringify(safeList));
 }
 
 // Adds one or more UIDs to the ignored list without duplicates.
@@ -561,6 +754,34 @@ function runDataMigration() {
 
 // Clears all stored assignments, classes, and courses, leaving the data version marker at 3.
 function clearAllData() {
+  if (isCloudActive()) {
+    const courseIds = (activeCloudData.courses || []).map(c => c.id);
+    const assignIds = (activeCloudData.assignments || []).map(a => a.id);
+    const classIds = (activeCloudData.classes || []).map(c => c.id);
+
+    activeCloudData.courses = [];
+    activeCloudData.assignments = [];
+    activeCloudData.classes = [];
+    activeCloudData.ignoredUIDs = [];
+    saveCloudCache();
+
+    if (window.PlannerFirebase) {
+      if (assignIds.length > 0 && typeof window.PlannerFirebase.bulkDeleteAssignmentsFromCloud === "function") {
+        window.PlannerFirebase.bulkDeleteAssignmentsFromCloud(currentUser.uid, assignIds);
+      }
+      if (courseIds.length > 0 && typeof window.PlannerFirebase.deleteCourseFromCloud === "function") {
+        courseIds.forEach(id => window.PlannerFirebase.deleteCourseFromCloud(currentUser.uid, id));
+      }
+      if (classIds.length > 0 && typeof window.PlannerFirebase.deleteClassMeetingFromCloud === "function") {
+        classIds.forEach(id => window.PlannerFirebase.deleteClassMeetingFromCloud(currentUser.uid, id));
+      }
+      if (typeof window.PlannerFirebase.saveSettingsToCloud === "function") {
+        window.PlannerFirebase.saveSettingsToCloud(currentUser.uid, { ignoredUIDs: [] });
+      }
+    }
+    return;
+  }
+
   saveStoredCourses([]);
   saveStoredAssignments([]);
   saveStoredClasses([]);
@@ -825,3 +1046,119 @@ function validateBackupJSON(rawText) {
     return { valid: false, error: "Could not parse JSON file: " + err.message };
   }
 }
+
+// --------------------------------------------------------------------------
+// UNIFIED DATA ACCESS LAYER (Read/Write Firestore or localStorage)
+// --------------------------------------------------------------------------
+
+/**
+ * Loads all coursework data (courses, assignments, classes, ignoredUIDs).
+ * Synchronous from active memory/cache, or async from Firestore if specified.
+ */
+async function loadAll(forceRemote = false) {
+  if (isCloudActive()) {
+    if (forceRemote && window.PlannerFirebase && typeof window.PlannerFirebase.loadAllUserData === "function") {
+      const remoteData = await window.PlannerFirebase.loadAllUserData(currentUser.uid);
+      applyCloudDataUpdate(remoteData);
+      return remoteData;
+    }
+    return {
+      courses: getStoredCourses(),
+      assignments: getStoredAssignments(),
+      classes: getStoredClasses(),
+      ignoredUIDs: getIgnoredUIDs()
+    };
+  }
+
+  return getLocalDataSnapshot();
+}
+
+/**
+ * Unified save/update for an assignment.
+ */
+async function saveAssignment(assignment) {
+  if (!assignment || !assignment.id) return null;
+  const assignments = getStoredAssignments();
+  const index = assignments.findIndex(a => a.id === assignment.id);
+  if (index >= 0) {
+    assignments[index] = assignment;
+  } else {
+    assignments.push(assignment);
+  }
+  saveStoredAssignments(assignments);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveAssignmentToCloud === "function") {
+    await window.PlannerFirebase.saveAssignmentToCloud(currentUser.uid, assignment);
+  }
+  return assignment;
+}
+
+/**
+ * Unified save/update for a course.
+ */
+async function saveCourse(course) {
+  if (!course || !course.id) return null;
+  const courses = getStoredCourses();
+  const index = courses.findIndex(c => c.id === course.id);
+  if (index >= 0) {
+    courses[index] = course;
+  } else {
+    courses.push(course);
+  }
+  saveStoredCourses(courses);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveCourseToCloud === "function") {
+    await window.PlannerFirebase.saveCourseToCloud(currentUser.uid, course);
+  }
+  return course;
+}
+
+/**
+ * Unified save/update for a class meeting.
+ */
+async function saveClassMeeting(classMeeting) {
+  if (!classMeeting || !classMeeting.id) return null;
+  const classes = getStoredClasses();
+  const index = classes.findIndex(c => c.id === classMeeting.id);
+  if (index >= 0) {
+    classes[index] = classMeeting;
+  } else {
+    classes.push(classMeeting);
+  }
+  saveStoredClasses(classes);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveClassMeetingToCloud === "function") {
+    await window.PlannerFirebase.saveClassMeetingToCloud(currentUser.uid, classMeeting);
+  }
+  return classMeeting;
+}
+
+/**
+ * Permanently erases all cloud data for the authenticated user, or clears local data if signed out.
+ */
+async function deleteMyData() {
+  if (isCloudActive()) {
+    const uid = currentUser.uid;
+    // Wipe active memory & local user cache
+    activeCloudData = { courses: [], assignments: [], classes: [], ignoredUIDs: [] };
+    try {
+      localStorage.removeItem(`populi_cloud_cache_${uid}`);
+    } catch (e) {}
+
+    // Erase in Cloud Firestore
+    if (window.PlannerFirebase && typeof window.PlannerFirebase.deleteUserCloudData === "function") {
+      await window.PlannerFirebase.deleteUserCloudData(uid);
+    }
+    return;
+  }
+
+  // Local-only mode
+  clearAllData();
+}
+
+// Expose unified data layer to global scope
+window.loadAll = loadAll;
+window.saveAssignment = saveAssignment;
+window.saveCourse = saveCourse;
+window.saveClassMeeting = saveClassMeeting;
+window.deleteMyData = deleteMyData;

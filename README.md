@@ -470,6 +470,65 @@ Import calendar files (`.ics`) exported from Populi to automatically populate yo
    - Verify only assignments on or after the cutoff date (plus your manually overridden row) were added to the planner.
    - Verify `populi_ignored_uids` in localStorage contains the skipped UIDs.
 
+### Test 10: Google Sign-In & Per-User Cloud Storage
+1. **Local Mode Check**:
+   - Open `index.html` while signed out.
+   - Notice the top bar displays the **Sign in** button with the Google icon.
+   - Notice the compact toolbar displays the **Local** sync status pill (`gray dot`).
+   - Create, edit, or delete assignments, courses, and schedules: all operations continue to work locally and save to `localStorage`.
+2. **First Sign-In & Migration Offer**:
+   - Ensure you have some coursework created locally.
+   - Click **Sign in** and complete Google authentication in the popup window.
+   - On first sign-in into an empty cloud account, the modal dialog **"Save Coursework to Google Account"** appears, listing your exact local item counts.
+   - Click **Upload to Cloud**: all local assignments, courses, and schedules are uploaded atomically into your Firestore collection.
+   - Notice the sync indicator switches to **Cloud** (`green glowing dot`).
+   - The user profile chip appears in the top bar with your Google avatar and display name.
+3. **Cross-Tab & Real-Time Cloud Sync**:
+   - Open a second browser tab or window to the same URL.
+   - When signed in, any change made in Tab 1 (adding an assignment, marking an assignment planned, editing a course) syncs immediately to Tab 2 via Firestore `onSnapshot` listeners.
+4. **Sign Out**:
+   - Click **Sign out** in the header.
+   - Real-time cloud listeners disconnect, and the app switches back to local guest mode without page reload.
+5. **Delete My Cloud Data**:
+   - Sign back in. Under **Data & Backup tools**, click the red **Delete My Cloud Data** button.
+   - Confirm the deletion dialog: all cloud collections under your account (`users/{uid}`) are permanently erased.
+
+---
+
+## 🔒 Firebase Cloud Setup & Deployment
+
+### 1. Enable Google Sign-In in Firebase Console
+1. Go to [Firebase Console](https://console.firebase.google.com/) and open the **`populiplanner`** project.
+2. In the left navigation, open **Authentication** -> **Sign-in method**.
+3. Enable **Google** as a sign-in provider and configure your support email.
+4. Under **Authorized domains**, ensure `localhost`, `127.0.0.1`, and your Firebase Hosting domains (`populiplanner.web.app`, `populiplanner.firebaseapp.com`) are listed.
+
+### 2. Enable Cloud Firestore
+1. In the left navigation, open **Firestore Database** -> **Create database**.
+2. Select your preferred database location (e.g. `nam5` or `us-central1`).
+3. Start in **Production mode** (security rules will be deployed from `firestore.rules`).
+
+### 3. Add Web App Credentials to `firebase.js`
+1. Go to **Project Settings** (gear icon) -> **General** -> scroll down to **Your apps**.
+2. Click the **Web** icon (`</>`) or select your existing web app.
+3. Copy the `firebaseConfig` object and paste it into `firebase.js`:
+   ```javascript
+   export const firebaseConfig = {
+     apiKey: "AIzaSy...",
+     authDomain: "populiplanner.firebaseapp.com",
+     projectId: "populiplanner",
+     storageBucket: "populiplanner.firebasestorage.app",
+     messagingSenderId: "123456789...",
+     appId: "1:123456789:web:..."
+   };
+   ```
+
+### 4. Deploy Hosting & Firestore Security Rules
+Run the following Firebase CLI command in your terminal:
+```bash
+firebase deploy --only hosting,firestore:rules
+```
+
 ---
 
 ## 🌿 Git Version Control Commands
@@ -484,8 +543,9 @@ cd "C:\Users\supaw\Documents\populi-planner"
 git status
 
 # 3. Stage all modified files
-git add .
+git add firebase.json firestore.rules firebase.js auth.js storage.js index.html styles.css README.md
 
 # 4. Commit your changes
-git commit -m "Implement Select Mode with Bulk Delete & Undo (Part 1) and Calendar Import Cutoff Date (Part 2)"
+git commit -m "Add Google Sign-In and per-user Cloud Firestore storage"
 ```
+

@@ -20,6 +20,30 @@
         </nav>
       </div>
       <div class="top-bar-actions">
+        <!-- User Authentication & Account Actions -->
+        <div id="auth-container" class="auth-container">
+          <!-- Google Sign-In Button (Guest mode) -->
+          <button type="button" class="btn-secondary btn-google-signin" id="btn-google-signin">
+            <svg class="google-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.3 9 5 12 5z"/>
+              <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.7-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"/>
+              <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.8s.2-2.1.4-2.8L1.9 6.3C.7 8.7 0 10.3 0 12s.7 3.3 1.9 5.7l3.7-2.9z"/>
+              <path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2-6.4-4.8L1.9 16.4C3.7 20.1 7.5 23 12 23z"/>
+            </svg>
+            <span class="btn-auth-text">Sign in</span>
+          </button>
+
+          <!-- User Profile & Sign Out (Authenticated mode) -->
+          <div id="auth-user-profile" class="auth-user-profile" style="display: none;">
+            <div class="user-chip">
+              <img id="user-avatar" class="user-avatar" src="" alt="User profile" style="display: none;">
+              <span id="user-avatar-fallback" class="user-avatar-fallback" style="display: none;">U</span>
+              <span id="user-name" class="user-name">User</span>
+            </div>
+            <button type="button" class="btn-secondary btn-signout" id="btn-signout" title="Sign out of Google">Sign out</button>
+          </div>
+        </div>
+
         <button type="button" class="btn-top-add" id="top-action-btn">+ Add assignment</button>
       </div>
     </div>
@@ -37,6 +61,11 @@
           <option value="all">All Courses</option>
         </select>
         <button type="button" id="btn-select-mode" class="btn-secondary btn-select-mode" aria-pressed="false">Select</button>
+        <!-- Real-Time Cloud / Local Status Indicator -->
+        <div id="sync-status" class="sync-status sync-status-local" title="Operating in local-only mode (saved in browser)">
+          <span class="sync-dot"></span>
+          <span class="sync-text">Local</span>
+        </div>
       </div>
 
       <!-- Empty State Welcome Box (Shown when no assignments exist at all) -->
@@ -133,6 +162,7 @@
           <button type="button" class="btn-tool" id="btn-import">Import Backup</button>
           <button type="button" class="btn-tool" id="btn-import-calendar">Import Calendar</button>
           <button type="button" class="btn-tool btn-tool-danger" id="btn-clear-all">Clear All Data</button>
+          <button type="button" class="btn-tool btn-tool-danger" id="btn-delete-cloud-data" style="display: none;">Delete My Cloud Data</button>
         </div>
       </details>
       <!-- Sticky Bottom Action Bar for Select Mode -->
@@ -484,12 +514,61 @@
     </div>
   </dialog>
 
+  <!-- Native Modal Dialog for First Sign-In Local Data Upload -->
+  <dialog id="first-signin-dialog" class="modal-dialog">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h2 class="dialog-title">Save Coursework to Google Account</h2>
+      </div>
+      <div class="dialog-body">
+        <p class="confirm-dialog-text">
+          Welcome, <strong id="first-signin-user-name">there</strong>! We found existing coursework saved in this browser:
+        </p>
+        <p class="form-hint" id="first-signin-stats" style="font-weight: 500; color: var(--text-color); margin: var(--space-sm) 0 var(--space-md) 0;"></p>
+        <p class="confirm-dialog-text">
+          Would you like to upload your existing local coursework to your Google account? After uploading, your assignments, courses, and schedules will sync automatically across all your devices.
+        </p>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" class="btn-secondary" id="first-signin-skip-btn">Start Fresh in Cloud</button>
+        <button type="button" class="btn-primary" id="first-signin-upload-btn">Upload to Cloud</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Native Modal Dialog for Delete Cloud Data Confirmation -->
+  <dialog id="delete-cloud-dialog" class="modal-dialog">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h2 class="dialog-title">Delete Cloud Data</h2>
+        <button type="button" class="dialog-close-btn" id="delete-cloud-close-btn" aria-label="Close dialog">&times;</button>
+      </div>
+      <div class="dialog-body">
+        <p class="confirm-dialog-text">
+          Are you sure you want to permanently erase all coursework saved in your Google Cloud account?
+        </p>
+        <p class="form-hint" style="color: var(--danger-color); margin-top: var(--space-sm);">
+          This will permanently delete all your assignments, courses, and class meetings stored in Cloud Firestore. This action cannot be undone.
+        </p>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" class="btn-secondary" id="delete-cloud-cancel-btn">Cancel</button>
+        <button type="button" class="btn-danger" id="delete-cloud-confirm-btn">Delete My Cloud Data</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Floating Toast Notification for Cloud Sync & Auth status -->
+  <div id="auth-toast" class="auth-toast" style="display: none;" role="status" aria-live="polite"></div>
+
   <!-- Hidden file input for Backup Import -->
   <input type="file" id="import-file-input" accept=".json" style="display: none;">
 
-  <!-- Scripts: Sample Data, Storage, Calendar, Schedule, Courses, ICS Parser, and App Logic -->
+  <!-- Scripts: Firebase Module, Sample Data, Storage, Auth, Calendar, Schedule, Courses, ICS Parser, and App Logic -->
+  <script type="module" src="firebase.js"></script>
   <script src="data/assignments.js"></script>
   <script src="storage.js"></script>
+  <script src="auth.js"></script>
   <script src="calendar.js"></script>
   <script src="schedule.js"></script>
   <script src="courses.js"></script>

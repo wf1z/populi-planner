@@ -1,0 +1,28 @@
+rules_version = '2';
+
+// ============================================================================
+// POPULI PLANNER - FIRESTORE SECURITY RULES
+// ============================================================================
+// Enforces strict per-user document isolation.
+// Users may only read or write documents within their own `users/{userId}` hierarchy.
+// All subcollections (courses, assignments, classes, settings) inherit this rule.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for clean, readable security checks
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Match each user's document and all nested subcollections
+    match /users/{userId}/{document=**} {
+      allow read, write: if isOwner(userId);
+    }
+  }
+}
