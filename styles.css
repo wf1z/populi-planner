@@ -2157,6 +2157,11 @@ dialog.modal-dialog::backdrop {
 .google-icon {
   flex-shrink: 0;
   display: block;
+  pointer-events: none;
+}
+
+.btn-auth-text {
+  pointer-events: none;
 }
 
 /* User profile header chip */

@@ -104,19 +104,37 @@ function updateAuthHeaderUI(user) {
 // Handles clicking "Sign in with Google".
 async function handleSignInClick() {
   const btnSignIn = document.getElementById("btn-google-signin");
-  if (!window.PlannerFirebase) {
-    showAuthToast("Firebase module is still loading. Please try again in a moment.", "error");
-    return;
-  }
 
-  if (typeof window.PlannerFirebase.isConfigured === "function" && !window.PlannerFirebase.isConfigured()) {
+  // 1. Check if running on local file:// protocol
+  if (window.location.protocol === "file:") {
     alert(
-      "Firebase Configuration Missing:\n\n" +
-      "To enable Google Sign-In and Cloud Storage, please open firebase.js and replace the placeholder firebaseConfig with your project's web configuration from the Firebase Console."
+      "Google Sign-In Requires a Web Server (or Firebase Hosting):\n\n" +
+      "Browsers and Google OAuth block sign-in on local 'file://' addresses.\n\n" +
+      "To test Google Sign-In:\n" +
+      "1. Run 'firebase serve' in your terminal and open http://localhost:5000\n" +
+      "2. Or view your live app on Firebase Hosting: https://populiplanner.web.app"
     );
     return;
   }
 
+  // 2. Check if Firebase module is loaded
+  if (!window.PlannerFirebase) {
+    showAuthToast("Firebase module is still loading. Please check your internet connection.", "error");
+    return;
+  }
+
+  // 3. Check if Firebase configuration is still the placeholder
+  if (typeof window.PlannerFirebase.isConfigured === "function" && !window.PlannerFirebase.isConfigured()) {
+    alert(
+      "Firebase Configuration Missing:\n\n" +
+      "To enable Google Sign-In and Cloud Storage:\n" +
+      "1. Open firebase.js in your editor.\n" +
+      "2. Replace the placeholder apiKey, appId, and projectId in firebaseConfig with your web app settings from the Firebase Console (Project Settings > General > Your apps)."
+    );
+    return;
+  }
+
+  // 4. Attempt Google Sign-In
   try {
     if (btnSignIn) {
       btnSignIn.disabled = true;
@@ -325,15 +343,26 @@ function initDeleteCloudControls() {
   }
 }
 
-// Connects all auth events once DOM and Firebase are ready.
-function initAuthSystem() {
+// Attaches click handlers to auth buttons immediately so they are never non-interactive
+function attachAuthButtonListeners() {
   const btnSignIn = document.getElementById("btn-google-signin");
   const btnSignOut = document.getElementById("btn-signout");
 
-  if (btnSignIn) btnSignIn.addEventListener("click", handleSignInClick);
-  if (btnSignOut) btnSignOut.addEventListener("click", handleSignOutClick);
+  if (btnSignIn && !btnSignIn.dataset.authAttached) {
+    btnSignIn.dataset.authAttached = "true";
+    btnSignIn.addEventListener("click", handleSignInClick);
+  }
+  if (btnSignOut && !btnSignOut.dataset.authAttached) {
+    btnSignOut.dataset.authAttached = "true";
+    btnSignOut.addEventListener("click", handleSignOutClick);
+  }
 
   initDeleteCloudControls();
+}
+
+// Connects all auth events once DOM and Firebase are ready.
+function initAuthSystem() {
+  attachAuthButtonListeners();
 
   // Listen to Firebase Auth state changes
   if (window.PlannerFirebase && typeof window.PlannerFirebase.onAuthChange === "function") {
@@ -358,23 +387,15 @@ function initAuthSystem() {
   }
 }
 
-// Initialize when DOM is ready
-document.addEventListener("DOMContentLoaded", function () {
-  // Give module a moment to expose window.PlannerFirebase if needed
-  if (window.PlannerFirebase) {
-    initAuthSystem();
-  } else {
-    // Retry shortly if ES module initializes right after DOMContentLoaded
-    const checkTimer = setInterval(() => {
-      if (window.PlannerFirebase) {
-        clearInterval(checkTimer);
-        initAuthSystem();
-      }
-    }, 50);
-    // Timeout after 2 seconds
-    setTimeout(() => clearInterval(checkTimer), 2000);
-  }
-});
+// Attach immediately if DOM is already parsed, or when DOMContentLoaded fires
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initAuthSystem);
+} else {
+  initAuthSystem();
+}
+
+// Fallback safety to ensure button listeners are attached
+window.addEventListener("load", attachAuthButtonListeners);
 
 // Expose toast function globally
 window.showAuthToast = showAuthToast;

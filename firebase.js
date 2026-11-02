@@ -1,31 +1,11 @@
 // ============================================================================
 // POPULI PLANNER - FIREBASE INITIALIZATION & CLOUD DATA LAYER
 // ============================================================================
-// Uses Firebase Modular SDK v10+ loaded from Google CDN.
+// Uses Firebase Modular SDK v10+ loaded dynamically from Google CDN.
+// Compatible with both local testing and production hosting environments.
 // Provides Google Authentication and Cloud Firestore synchronization
 // partitioned per user under `users/{uid}`.
 // ============================================================================
-
-import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import {
-  getAuth,
-  signInWithPopup,
-  signOut,
-  GoogleAuthProvider,
-  onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  deleteDoc,
-  collection,
-  getDocs,
-  onSnapshot,
-  writeBatch,
-  serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 // ----------------------------------------------------------------------------
 // 1. FIREBASE CONFIGURATION
@@ -35,7 +15,7 @@ import {
 //
 // NOTE: Only public client identifiers go here. Never put private service
 // account keys or administrative secrets in client-side code.
-export const firebaseConfig = {
+const firebaseConfig = {
   apiKey: "YOUR_API_KEY_HERE",
   authDomain: "populiplanner.firebaseapp.com",
   projectId: "populiplanner",
@@ -45,7 +25,7 @@ export const firebaseConfig = {
 };
 
 // Validates whether the developer has replaced the placeholder config.
-export function isFirebaseConfigured() {
+function isFirebaseConfigured() {
   return Boolean(
     firebaseConfig.apiKey &&
     firebaseConfig.apiKey !== "YOUR_API_KEY_HERE" &&
@@ -54,29 +34,84 @@ export function isFirebaseConfigured() {
   );
 }
 
-// Initialize the Firebase App safely (avoid re-initializing if already active)
+// Module references populated once loaded dynamically from Google CDN
+let fbApp = null;
+let fbAuth = null;
+let fbFirestore = null;
+
 let app = null;
 let auth = null;
 let db = null;
 let googleProvider = null;
 
-if (isFirebaseConfigured()) {
-  try {
-    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    auth = getAuth(app);
-    db = getFirestore(app);
-    googleProvider = new GoogleAuthProvider();
-    // Prompt the user to select their account each time
-    googleProvider.setCustomParameters({ prompt: "select_account" });
-  } catch (initErr) {
-    console.warn("Could not initialize Firebase with current configuration:", initErr);
-  }
-} else {
-  console.info(
-    "%c[Populi Planner]%c Firebase is running in unconfigured mode. Paste your config into firebase.js to enable Google Sign-in and Cloud sync.",
-    "color: #e0b8c8; font-weight: bold;",
-    "color: inherit;"
-  );
+let authStateListeners = [];
+let currentUser = null;
+let initPromise = null;
+
+/**
+ * Dynamically imports and initializes Firebase SDK modules from CDN.
+ * Safely handles unconfigured state and offline environments.
+ */
+async function initFirebase() {
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    // If running on local file:// protocol, warn that OAuth cannot complete
+    if (window.location.protocol === "file:") {
+      console.info(
+        "%c[Populi Planner]%c Running from local file:// URL. Google Sign-In requires HTTP/HTTPS. Use 'firebase serve' or deploy with 'firebase deploy'.",
+        "color: #e0b8c8; font-weight: bold;",
+        "color: inherit;"
+      );
+    }
+
+    // If config has placeholders, operate in local guest mode
+    if (!isFirebaseConfigured()) {
+      console.info(
+        "%c[Populi Planner]%c Firebase is running in unconfigured mode. Paste your config into firebase.js to enable Google Sign-in and Cloud sync.",
+        "color: #e0b8c8; font-weight: bold;",
+        "color: inherit;"
+      );
+      return false;
+    }
+
+    try {
+      const [appMod, authMod, firestoreMod] = await Promise.all([
+        import("https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js"),
+        import("https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js"),
+        import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js")
+      ]);
+
+      fbApp = appMod;
+      fbAuth = authMod;
+      fbFirestore = firestoreMod;
+
+      app = fbApp.getApps().length === 0 ? fbApp.initializeApp(firebaseConfig) : fbApp.getApp();
+      auth = fbAuth.getAuth(app);
+      db = fbFirestore.getFirestore(app);
+      googleProvider = new fbAuth.GoogleAuthProvider();
+      googleProvider.setCustomParameters({ prompt: "select_account" });
+
+      // Subscribe to auth state changes and notify registered listeners
+      fbAuth.onAuthStateChanged(auth, user => {
+        currentUser = user;
+        authStateListeners.forEach(cb => {
+          try {
+            cb(user);
+          } catch (e) {
+            console.error("Auth state listener error:", e);
+          }
+        });
+      });
+
+      return true;
+    } catch (initErr) {
+      console.warn("Could not load or initialize Firebase modules:", initErr);
+      return false;
+    }
+  })();
+
+  return initPromise;
 }
 
 // ----------------------------------------------------------------------------
@@ -87,16 +122,39 @@ if (isFirebaseConfigured()) {
  * Initiates Google Sign-In with a popup.
  * Translates low-level errors into beginner-friendly, actionable messages.
  */
-export async function signInWithGoogle() {
-  if (!isFirebaseConfigured() || !auth || !googleProvider) {
+async function signInWithGoogle() {
+  if (window.location.protocol === "file:") {
+    const fileErr = new Error(
+      "Google Sign-In Cannot Run on Local Files (file://)\n\n" +
+      "Browsers and Google OAuth block sign-in on local 'file://' addresses.\n\n" +
+      "To test Google Sign-In:\n" +
+      "1. Run 'firebase serve' in your terminal and open http://localhost:5000\n" +
+      "2. Or deploy to Firebase Hosting with 'firebase deploy' and open your web app URL."
+    );
+    fileErr.code = "auth/file-protocol-unsupported";
+    throw fileErr;
+  }
+
+  if (!isFirebaseConfigured()) {
+    const configErr = new Error(
+      "Firebase Configuration Missing:\n\n" +
+      "To enable Google Sign-In and Cloud Storage:\n" +
+      "1. Open firebase.js in your editor.\n" +
+      "2. Replace the placeholder apiKey, appId, and projectId in firebaseConfig with your web app settings from the Firebase Console (Project Settings > General > Your apps)."
+    );
+    configErr.code = "auth/not-configured";
+    throw configErr;
+  }
+
+  const ready = await initFirebase();
+  if (!ready || !auth || !googleProvider || !fbAuth) {
     throw new Error(
-      "Firebase configuration missing. Please paste your web config from Firebase Console into firebase.js."
+      "Firebase modules could not be loaded from CDN. Please check your internet connection."
     );
   }
 
   try {
-    const result = await signInWithPopup(auth, googleProvider);
-    // Persist basic profile info in Firestore (display name, avatar, email)
+    const result = await fbAuth.signInWithPopup(auth, googleProvider);
     if (result && result.user) {
       await saveUserProfile(result.user);
     }
@@ -119,6 +177,13 @@ export async function signInWithGoogle() {
       friendlyErr.code = err.code;
       throw friendlyErr;
     }
+    if (err.code === "auth/unauthorized-domain") {
+      const friendlyErr = new Error(
+        "Domain not authorized in Firebase Console: Add '" + window.location.hostname + "' under Firebase Console -> Authentication -> Settings -> Authorized domains."
+      );
+      friendlyErr.code = err.code;
+      throw friendlyErr;
+    }
     throw err;
   }
 }
@@ -126,15 +191,15 @@ export async function signInWithGoogle() {
 /**
  * Signs out the currently authenticated user.
  */
-export async function signOutUser() {
-  if (!auth) return;
-  await signOut(auth);
+async function signOutUser() {
+  if (!auth || !fbAuth) return;
+  await fbAuth.signOut(auth);
 }
 
 /**
  * Returns the currently signed-in user object, or null.
  */
-export function getCurrentUser() {
+function getCurrentUser() {
   return auth ? auth.currentUser : null;
 }
 
@@ -143,13 +208,18 @@ export function getCurrentUser() {
  * @param {Function} callback - Function called with (user)
  * @returns {Function} Unsubscribe function
  */
-export function onAuthChange(callback) {
-  if (!auth) {
-    // If not configured, immediately call back with null (guest mode)
-    callback(null);
-    return () => {};
+function onAuthChange(callback) {
+  if (typeof callback !== "function") return () => {};
+  authStateListeners.push(callback);
+
+  // If already authenticated or checked, invoke immediately
+  if (currentUser) {
+    callback(currentUser);
   }
-  return onAuthStateChanged(auth, callback);
+
+  return () => {
+    authStateListeners = authStateListeners.filter(cb => cb !== callback);
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -160,18 +230,21 @@ export function onAuthChange(callback) {
  * Records or updates the user profile document at `users/{uid}`.
  * Only saves displayName, photoURL, email, and timestamps.
  */
-export async function saveUserProfile(user) {
-  if (!db || !user) return;
-  const userRef = doc(db, "users", user.uid);
+async function saveUserProfile(user) {
+  if (!user || !user.uid) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
+
+  const userRef = fbFirestore.doc(db, "users", user.uid);
   const profileData = {
     displayName: user.displayName || "User",
     photoURL: user.photoURL || null,
     email: user.email || null,
-    lastLoginAt: serverTimestamp()
+    lastLoginAt: fbFirestore.serverTimestamp()
   };
 
   try {
-    await setDoc(userRef, { profile: profileData }, { merge: true });
+    await fbFirestore.setDoc(userRef, { profile: profileData }, { merge: true });
   } catch (err) {
     console.warn("Could not save user profile:", err);
   }
@@ -185,20 +258,19 @@ export async function saveUserProfile(user) {
  * Checks whether the user already has data in Firestore.
  * Used during first sign-in to decide whether to prompt for local data upload.
  */
-export async function checkCloudHasData(uid) {
-  if (!db || !uid) return false;
+async function checkCloudHasData(uid) {
+  if (!uid) return false;
+  await initFirebase();
+  if (!db || !fbFirestore) return false;
 
   try {
-    // Check courses collection first
-    const coursesSnap = await getDocs(collection(db, "users", uid, "courses"));
+    const coursesSnap = await fbFirestore.getDocs(fbFirestore.collection(db, "users", uid, "courses"));
     if (!coursesSnap.empty) return true;
 
-    // Check assignments collection
-    const assignmentsSnap = await getDocs(collection(db, "users", uid, "assignments"));
+    const assignmentsSnap = await fbFirestore.getDocs(fbFirestore.collection(db, "users", uid, "assignments"));
     if (!assignmentsSnap.empty) return true;
 
-    // Check classes collection
-    const classesSnap = await getDocs(collection(db, "users", uid, "classes"));
+    const classesSnap = await fbFirestore.getDocs(fbFirestore.collection(db, "users", uid, "classes"));
     if (!classesSnap.empty) return true;
 
     return false;
@@ -211,16 +283,20 @@ export async function checkCloudHasData(uid) {
 /**
  * Fetches all courses, assignments, classes, and settings for a user once.
  */
-export async function loadAllUserData(uid) {
-  if (!db || !uid) {
+async function loadAllUserData(uid) {
+  if (!uid) {
+    return { courses: [], assignments: [], classes: [], ignoredUIDs: [] };
+  }
+  await initFirebase();
+  if (!db || !fbFirestore) {
     return { courses: [], assignments: [], classes: [], ignoredUIDs: [] };
   }
 
   const [coursesSnap, assignmentsSnap, classesSnap, settingsDoc] = await Promise.all([
-    getDocs(collection(db, "users", uid, "courses")),
-    getDocs(collection(db, "users", uid, "assignments")),
-    getDocs(collection(db, "users", uid, "classes")),
-    getDoc(doc(db, "users", uid, "settings", "app"))
+    fbFirestore.getDocs(fbFirestore.collection(db, "users", uid, "courses")),
+    fbFirestore.getDocs(fbFirestore.collection(db, "users", uid, "assignments")),
+    fbFirestore.getDocs(fbFirestore.collection(db, "users", uid, "classes")),
+    fbFirestore.getDoc(fbFirestore.doc(db, "users", uid, "settings", "app"))
   ]);
 
   const courses = [];
@@ -245,19 +321,23 @@ export async function loadAllUserData(uid) {
  * and settings for the signed-in user via `onSnapshot`.
  * @returns {Function} Function to detach all active listeners on sign-out.
  */
-export function subscribeToUserData(uid, onDataUpdate, onError) {
-  if (!db || !uid) return () => {};
+function subscribeToUserData(uid, onDataUpdate, onError) {
+  if (!uid) return () => {};
 
   let currentCourses = [];
   let currentAssignments = [];
   let currentClasses = [];
   let currentIgnoredUIDs = [];
 
-  // Track initial loads so we don't trigger partial renders
   let coursesLoaded = false;
   let assignmentsLoaded = false;
   let classesLoaded = false;
   let settingsLoaded = false;
+
+  let unsubCourses = () => {};
+  let unsubAssignments = () => {};
+  let unsubClasses = () => {};
+  let unsubSettings = () => {};
 
   function notifyIfReady() {
     if (coursesLoaded && assignmentsLoaded && classesLoaded && settingsLoaded) {
@@ -270,66 +350,69 @@ export function subscribeToUserData(uid, onDataUpdate, onError) {
     }
   }
 
-  const unsubCourses = onSnapshot(
-    collection(db, "users", uid, "courses"),
-    snapshot => {
-      currentCourses = [];
-      snapshot.forEach(d => currentCourses.push(d.data()));
-      coursesLoaded = true;
-      notifyIfReady();
-    },
-    err => {
-      console.error("Firestore courses listener error:", err);
-      if (onError) onError(err);
-    }
-  );
+  initFirebase().then(ready => {
+    if (!ready || !db || !fbFirestore) return;
 
-  const unsubAssignments = onSnapshot(
-    collection(db, "users", uid, "assignments"),
-    snapshot => {
-      currentAssignments = [];
-      snapshot.forEach(d => currentAssignments.push(d.data()));
-      assignmentsLoaded = true;
-      notifyIfReady();
-    },
-    err => {
-      console.error("Firestore assignments listener error:", err);
-      if (onError) onError(err);
-    }
-  );
-
-  const unsubClasses = onSnapshot(
-    collection(db, "users", uid, "classes"),
-    snapshot => {
-      currentClasses = [];
-      snapshot.forEach(d => currentClasses.push(d.data()));
-      classesLoaded = true;
-      notifyIfReady();
-    },
-    err => {
-      console.error("Firestore classes listener error:", err);
-      if (onError) onError(err);
-    }
-  );
-
-  const unsubSettings = onSnapshot(
-    doc(db, "users", uid, "settings", "app"),
-    docSnap => {
-      if (docSnap.exists() && Array.isArray(docSnap.data().ignoredUIDs)) {
-        currentIgnoredUIDs = docSnap.data().ignoredUIDs;
-      } else {
-        currentIgnoredUIDs = [];
+    unsubCourses = fbFirestore.onSnapshot(
+      fbFirestore.collection(db, "users", uid, "courses"),
+      snapshot => {
+        currentCourses = [];
+        snapshot.forEach(d => currentCourses.push(d.data()));
+        coursesLoaded = true;
+        notifyIfReady();
+      },
+      err => {
+        console.error("Firestore courses listener error:", err);
+        if (onError) onError(err);
       }
-      settingsLoaded = true;
-      notifyIfReady();
-    },
-    err => {
-      console.error("Firestore settings listener error:", err);
-      if (onError) onError(err);
-    }
-  );
+    );
 
-  // Return unified cleanup function
+    unsubAssignments = fbFirestore.onSnapshot(
+      fbFirestore.collection(db, "users", uid, "assignments"),
+      snapshot => {
+        currentAssignments = [];
+        snapshot.forEach(d => currentAssignments.push(d.data()));
+        assignmentsLoaded = true;
+        notifyIfReady();
+      },
+      err => {
+        console.error("Firestore assignments listener error:", err);
+        if (onError) onError(err);
+      }
+    );
+
+    unsubClasses = fbFirestore.onSnapshot(
+      fbFirestore.collection(db, "users", uid, "classes"),
+      snapshot => {
+        currentClasses = [];
+        snapshot.forEach(d => currentClasses.push(d.data()));
+        classesLoaded = true;
+        notifyIfReady();
+      },
+      err => {
+        console.error("Firestore classes listener error:", err);
+        if (onError) onError(err);
+      }
+    );
+
+    unsubSettings = fbFirestore.onSnapshot(
+      fbFirestore.doc(db, "users", uid, "settings", "app"),
+      docSnap => {
+        if (docSnap.exists() && Array.isArray(docSnap.data().ignoredUIDs)) {
+          currentIgnoredUIDs = docSnap.data().ignoredUIDs;
+        } else {
+          currentIgnoredUIDs = [];
+        }
+        settingsLoaded = true;
+        notifyIfReady();
+      },
+      err => {
+        console.error("Firestore settings listener error:", err);
+        if (onError) onError(err);
+      }
+    );
+  });
+
   return function unsubscribeAll() {
     unsubCourses();
     unsubAssignments();
@@ -342,109 +425,117 @@ export function subscribeToUserData(uid, onDataUpdate, onError) {
 // 5. INDIVIDUAL CLOUD MUTATIONS
 // ----------------------------------------------------------------------------
 
-export async function saveCourseToCloud(uid, course) {
-  if (!db || !uid || !course || !course.id) return;
-  await setDoc(doc(db, "users", uid, "courses", course.id), course);
+async function saveCourseToCloud(uid, course) {
+  if (!uid || !course || !course.id) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
+  await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "courses", course.id), course);
 }
 
-export async function deleteCourseFromCloud(uid, courseId) {
-  if (!db || !uid || !courseId) return;
-  await deleteDoc(doc(db, "users", uid, "courses", courseId));
+async function deleteCourseFromCloud(uid, courseId) {
+  if (!uid || !courseId) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
+  await fbFirestore.deleteDoc(fbFirestore.doc(db, "users", uid, "courses", courseId));
 }
 
-export async function saveAssignmentToCloud(uid, assignment) {
-  if (!db || !uid || !assignment || !assignment.id) return;
-  await setDoc(doc(db, "users", uid, "assignments", assignment.id), assignment);
+async function saveAssignmentToCloud(uid, assignment) {
+  if (!uid || !assignment || !assignment.id) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
+  await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "assignments", assignment.id), assignment);
 }
 
-export async function deleteAssignmentFromCloud(uid, assignmentId) {
-  if (!db || !uid || !assignmentId) return;
-  await deleteDoc(doc(db, "users", uid, "assignments", assignmentId));
+async function deleteAssignmentFromCloud(uid, assignmentId) {
+  if (!uid || !assignmentId) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
+  await fbFirestore.deleteDoc(fbFirestore.doc(db, "users", uid, "assignments", assignmentId));
 }
 
-/**
- * Bulk deletes assignments using Firestore write batches.
- */
-export async function bulkDeleteAssignmentsFromCloud(uid, assignmentIds) {
-  if (!db || !uid || !assignmentIds || assignmentIds.length === 0) return;
+async function bulkDeleteAssignmentsFromCloud(uid, assignmentIds) {
+  if (!uid || !assignmentIds || assignmentIds.length === 0) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
 
-  // Process in chunks of 450 (Firestore limit is 500 ops per batch)
   const chunkSize = 450;
   for (let i = 0; i < assignmentIds.length; i += chunkSize) {
     const chunk = assignmentIds.slice(i, i + chunkSize);
-    const batch = writeBatch(db);
+    const batch = fbFirestore.writeBatch(db);
     chunk.forEach(id => {
-      batch.delete(doc(db, "users", uid, "assignments", id));
+      batch.delete(fbFirestore.doc(db, "users", uid, "assignments", id));
     });
     await batch.commit();
   }
 }
 
-export async function saveClassMeetingToCloud(uid, classMeeting) {
-  if (!db || !uid || !classMeeting || !classMeeting.id) return;
-  await setDoc(doc(db, "users", uid, "classes", classMeeting.id), classMeeting);
+async function saveClassMeetingToCloud(uid, classMeeting) {
+  if (!uid || !classMeeting || !classMeeting.id) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
+  await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "classes", classMeeting.id), classMeeting);
 }
 
-export async function deleteClassMeetingFromCloud(uid, classId) {
-  if (!db || !uid || !classId) return;
-  await deleteDoc(doc(db, "users", uid, "classes", classId));
+async function deleteClassMeetingFromCloud(uid, classId) {
+  if (!uid || !classId) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
+  await fbFirestore.deleteDoc(fbFirestore.doc(db, "users", uid, "classes", classId));
 }
 
-export async function saveSettingsToCloud(uid, settings) {
-  if (!db || !uid) return;
-  await setDoc(doc(db, "users", uid, "settings", "app"), settings, { merge: true });
+async function saveSettingsToCloud(uid, settings) {
+  if (!uid) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
+  await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "settings", "app"), settings, { merge: true });
 }
 
 // ----------------------------------------------------------------------------
 // 6. BULK UPLOAD & "DELETE MY DATA" HELPERS
 // ----------------------------------------------------------------------------
 
-/**
- * Uploads all local planner data to the user's Firestore collections.
- * Uses atomic write batches to ensure fast, reliable transfer.
- */
-export async function uploadLocalDataToCloud(uid, data) {
-  if (!db || !uid) return;
-  const { courses = [], assignments = [], classes = [], ignoredUIDs = [] } = data;
+async function uploadLocalDataToCloud(uid, data) {
+  if (!uid) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
 
-  // Combine items to write
+  const { courses = [], assignments = [], classes = [], ignoredUIDs = [] } = data;
   const operations = [];
 
   courses.forEach(c => {
     operations.push({
-      ref: doc(db, "users", uid, "courses", c.id),
+      ref: fbFirestore.doc(db, "users", uid, "courses", c.id),
       data: c
     });
   });
 
   assignments.forEach(a => {
     operations.push({
-      ref: doc(db, "users", uid, "assignments", a.id),
+      ref: fbFirestore.doc(db, "users", uid, "assignments", a.id),
       data: a
     });
   });
 
   classes.forEach(m => {
     operations.push({
-      ref: doc(db, "users", uid, "classes", m.id),
+      ref: fbFirestore.doc(db, "users", uid, "classes", m.id),
       data: m
     });
   });
 
   operations.push({
-    ref: doc(db, "users", uid, "settings", "app"),
+    ref: fbFirestore.doc(db, "users", uid, "settings", "app"),
     data: {
       ignoredUIDs: ignoredUIDs,
       dataVersion: "3",
-      uploadedAt: serverTimestamp()
+      uploadedAt: fbFirestore.serverTimestamp()
     }
   });
 
-  // Commit in chunks of 450
   const chunkSize = 450;
   for (let i = 0; i < operations.length; i += chunkSize) {
     const chunk = operations.slice(i, i + chunkSize);
-    const batch = writeBatch(db);
+    const batch = fbFirestore.writeBatch(db);
     chunk.forEach(op => {
       batch.set(op.ref, op.data);
     });
@@ -452,30 +543,28 @@ export async function uploadLocalDataToCloud(uid, data) {
   }
 }
 
-/**
- * Permanently deletes all data under `users/{uid}` in Firestore.
- */
-export async function deleteUserCloudData(uid) {
-  if (!db || !uid) return;
+async function deleteUserCloudData(uid) {
+  if (!uid) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
 
   const [coursesSnap, assignmentsSnap, classesSnap] = await Promise.all([
-    getDocs(collection(db, "users", uid, "courses")),
-    getDocs(collection(db, "users", uid, "assignments")),
-    getDocs(collection(db, "users", uid, "classes"))
+    fbFirestore.getDocs(fbFirestore.collection(db, "users", uid, "courses")),
+    fbFirestore.getDocs(fbFirestore.collection(db, "users", uid, "assignments")),
+    fbFirestore.getDocs(fbFirestore.collection(db, "users", uid, "classes"))
   ]);
 
   const deleteRefs = [];
-
   coursesSnap.forEach(d => deleteRefs.push(d.ref));
   assignmentsSnap.forEach(d => deleteRefs.push(d.ref));
   classesSnap.forEach(d => deleteRefs.push(d.ref));
-  deleteRefs.push(doc(db, "users", uid, "settings", "app"));
-  deleteRefs.push(doc(db, "users", uid));
+  deleteRefs.push(fbFirestore.doc(db, "users", uid, "settings", "app"));
+  deleteRefs.push(fbFirestore.doc(db, "users", uid));
 
   const chunkSize = 450;
   for (let i = 0; i < deleteRefs.length; i += chunkSize) {
     const chunk = deleteRefs.slice(i, i + chunkSize);
-    const batch = writeBatch(db);
+    const batch = fbFirestore.writeBatch(db);
     chunk.forEach(ref => batch.delete(ref));
     await batch.commit();
   }
@@ -484,12 +573,17 @@ export async function deleteUserCloudData(uid) {
 // ----------------------------------------------------------------------------
 // 7. EXPOSE TO WINDOW FOR SEAMLESS SCRIPT INTEGRATION
 // ----------------------------------------------------------------------------
-// Makes all helper functions available on `window.PlannerFirebase`
-// so standard non-module script files (storage.js, app.js) can easily call them.
+// Instantly exposes window.PlannerFirebase synchronously so all application
+// scripts (storage.js, auth.js, app.js) have immediate access without delays.
 window.PlannerFirebase = {
   isConfigured: isFirebaseConfigured,
-  auth: auth,
-  db: db,
+  init: initFirebase,
+  get auth() {
+    return auth;
+  },
+  get db() {
+    return db;
+  },
   signInWithGoogle,
   signOutUser,
   getCurrentUser,
@@ -509,3 +603,8 @@ window.PlannerFirebase = {
   uploadLocalDataToCloud,
   deleteUserCloudData
 };
+
+// Auto-initialize in background if running over HTTP/HTTPS and credentials exist
+if (typeof window !== "undefined" && window.location && window.location.protocol !== "file:" && isFirebaseConfigured()) {
+  initFirebase();
+}
