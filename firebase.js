@@ -1,40 +1,33 @@
 // ============================================================================
 // POPULI PLANNER - FIREBASE INITIALIZATION & CLOUD DATA LAYER
 // ============================================================================
-// Uses Firebase Modular SDK v10+ loaded dynamically from Google CDN.
-// Compatible with both local testing and production hosting environments.
-// Provides Google Authentication and Cloud Firestore synchronization
-// partitioned per user under `users/{uid}`.
-// ============================================================================
 
-// ----------------------------------------------------------------------------
-// 1. FIREBASE CONFIGURATION
-// ----------------------------------------------------------------------------
-// Paste your Firebase Web App configuration below.
-// Find these in Firebase Console: Project Settings -> General -> "Your apps" (Web)
-//
-// NOTE: Only public client identifiers go here. Never put private service
-// account keys or administrative secrets in client-side code.
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY_HERE",
-  authDomain: "populiplanner.firebaseapp.com",
-  projectId: "populiplanner",
-  storageBucket: "populiplanner.firebasestorage.app",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
-};
+(function () {
+  // 1. FIREBASE CONFIGURATION
+  // Configuration is maintained in firebase-config.js.
+  const firebaseConfig = (typeof window !== "undefined" && window.firebaseConfig) ? window.firebaseConfig : {
+    apiKey: "YOUR_API_KEY_HERE",
+    authDomain: "populiplanner.firebaseapp.com",
+    projectId: "populiplanner",
+    storageBucket: "populiplanner.firebasestorage.app",
+    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
 
-// Validates whether the developer has replaced the placeholder config.
-function isFirebaseConfigured() {
-  return Boolean(
-    firebaseConfig.apiKey &&
-    firebaseConfig.apiKey !== "YOUR_API_KEY_HERE" &&
-    firebaseConfig.projectId &&
-    firebaseConfig.projectId !== "YOUR_PROJECT_ID"
-  );
-}
+  // Validates whether the developer has replaced the placeholder config.
+  function isFirebaseConfigured() {
+    if (typeof window !== "undefined" && typeof window.isFirebaseConfigured === "function") {
+      return window.isFirebaseConfigured();
+    }
+    return Boolean(
+      firebaseConfig.apiKey &&
+      firebaseConfig.apiKey !== "YOUR_API_KEY_HERE" &&
+      firebaseConfig.projectId &&
+      firebaseConfig.projectId !== "YOUR_PROJECT_ID"
+    );
+  }
 
-// Module references populated once loaded dynamically from Google CDN
+  // Module references populated once loaded dynamically from Google CDN
 let fbApp = null;
 let fbAuth = null;
 let fbFirestore = null;
@@ -114,9 +107,7 @@ async function initFirebase() {
   return initPromise;
 }
 
-// ----------------------------------------------------------------------------
 // 2. AUTHENTICATION HELPERS
-// ----------------------------------------------------------------------------
 
 /**
  * Initiates Google Sign-In with a popup.
@@ -222,9 +213,7 @@ function onAuthChange(callback) {
   };
 }
 
-// ----------------------------------------------------------------------------
 // 3. USER PROFILE HELPERS
-// ----------------------------------------------------------------------------
 
 /**
  * Records or updates the user profile document at `users/{uid}`.
@@ -250,9 +239,7 @@ async function saveUserProfile(user) {
   }
 }
 
-// ----------------------------------------------------------------------------
 // 4. CLOUD DATA CHECK & LOAD HELPERS
-// ----------------------------------------------------------------------------
 
 /**
  * Checks whether the user already has data in Firestore.
@@ -421,36 +408,113 @@ function subscribeToUserData(uid, onDataUpdate, onError) {
   };
 }
 
-// ----------------------------------------------------------------------------
-// 5. INDIVIDUAL CLOUD MUTATIONS
-// ----------------------------------------------------------------------------
+// 5. INDIVIDUAL CLOUD MUTATIONS & ERROR REPORTING
+
+/**
+ * Centrally handles Firestore errors and surfaces user-visible toast notifications,
+ * especially for security permission-denied events.
+ */
+function handleFirestoreError(err, operationContext = "cloud operation") {
+  console.error(`Firestore error during ${operationContext}:`, err);
+  if (typeof window !== "undefined" && typeof window.showAuthToast === "function") {
+    if (err && (err.code === "permission-denied" || (err.message && err.message.toLowerCase().includes("permission")))) {
+      window.showAuthToast(`Firestore Permission Denied: Access denied while ${operationContext}.`, "error", 7000);
+    } else if (err && err.message) {
+      window.showAuthToast(`Cloud Error (${operationContext}): ${err.message}`, "error", 5000);
+    }
+  }
+}
 
 async function saveCourseToCloud(uid, course) {
   if (!uid || !course || !course.id) return;
   await initFirebase();
   if (!db || !fbFirestore) return;
-  await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "courses", course.id), course);
+  try {
+    await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "courses", course.id), course);
+  } catch (err) {
+    handleFirestoreError(err, "saving course");
+  }
 }
 
 async function deleteCourseFromCloud(uid, courseId) {
   if (!uid || !courseId) return;
   await initFirebase();
   if (!db || !fbFirestore) return;
-  await fbFirestore.deleteDoc(fbFirestore.doc(db, "users", uid, "courses", courseId));
+  try {
+    await fbFirestore.deleteDoc(fbFirestore.doc(db, "users", uid, "courses", courseId));
+  } catch (err) {
+    handleFirestoreError(err, "deleting course");
+  }
 }
 
 async function saveAssignmentToCloud(uid, assignment) {
   if (!uid || !assignment || !assignment.id) return;
   await initFirebase();
   if (!db || !fbFirestore) return;
-  await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "assignments", assignment.id), assignment);
+  try {
+    await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "assignments", assignment.id), assignment);
+  } catch (err) {
+    handleFirestoreError(err, "saving assignment");
+  }
 }
 
 async function deleteAssignmentFromCloud(uid, assignmentId) {
   if (!uid || !assignmentId) return;
   await initFirebase();
   if (!db || !fbFirestore) return;
-  await fbFirestore.deleteDoc(fbFirestore.doc(db, "users", uid, "assignments", assignmentId));
+  try {
+    await fbFirestore.deleteDoc(fbFirestore.doc(db, "users", uid, "assignments", assignmentId));
+  } catch (err) {
+    handleFirestoreError(err, "deleting assignment");
+  }
+}
+
+async function bulkArchiveAssignmentsInCloud(uid, assignmentIds, archivedAt) {
+  if (!uid || !assignmentIds || assignmentIds.length === 0) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
+
+  const chunkSize = 450;
+  try {
+    for (let i = 0; i < assignmentIds.length; i += chunkSize) {
+      const chunk = assignmentIds.slice(i, i + chunkSize);
+      const batch = fbFirestore.writeBatch(db);
+      chunk.forEach(id => {
+        batch.set(
+          fbFirestore.doc(db, "users", uid, "assignments", id),
+          { archived: true, archivedAt: archivedAt },
+          { merge: true }
+        );
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    handleFirestoreError(err, "bulk archiving assignments");
+  }
+}
+
+async function bulkRestoreAssignmentsInCloud(uid, assignmentIds) {
+  if (!uid || !assignmentIds || assignmentIds.length === 0) return;
+  await initFirebase();
+  if (!db || !fbFirestore) return;
+
+  const chunkSize = 450;
+  try {
+    for (let i = 0; i < assignmentIds.length; i += chunkSize) {
+      const chunk = assignmentIds.slice(i, i + chunkSize);
+      const batch = fbFirestore.writeBatch(db);
+      chunk.forEach(id => {
+        batch.set(
+          fbFirestore.doc(db, "users", uid, "assignments", id),
+          { archived: false, archivedAt: null, completed: false, planned: false },
+          { merge: true }
+        );
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    handleFirestoreError(err, "bulk restoring assignments");
+  }
 }
 
 async function bulkDeleteAssignmentsFromCloud(uid, assignmentIds) {
@@ -459,13 +523,17 @@ async function bulkDeleteAssignmentsFromCloud(uid, assignmentIds) {
   if (!db || !fbFirestore) return;
 
   const chunkSize = 450;
-  for (let i = 0; i < assignmentIds.length; i += chunkSize) {
-    const chunk = assignmentIds.slice(i, i + chunkSize);
-    const batch = fbFirestore.writeBatch(db);
-    chunk.forEach(id => {
-      batch.delete(fbFirestore.doc(db, "users", uid, "assignments", id));
-    });
-    await batch.commit();
+  try {
+    for (let i = 0; i < assignmentIds.length; i += chunkSize) {
+      const chunk = assignmentIds.slice(i, i + chunkSize);
+      const batch = fbFirestore.writeBatch(db);
+      chunk.forEach(id => {
+        batch.delete(fbFirestore.doc(db, "users", uid, "assignments", id));
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    handleFirestoreError(err, "bulk deleting assignments");
   }
 }
 
@@ -473,26 +541,36 @@ async function saveClassMeetingToCloud(uid, classMeeting) {
   if (!uid || !classMeeting || !classMeeting.id) return;
   await initFirebase();
   if (!db || !fbFirestore) return;
-  await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "classes", classMeeting.id), classMeeting);
+  try {
+    await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "classes", classMeeting.id), classMeeting);
+  } catch (err) {
+    handleFirestoreError(err, "saving class meeting");
+  }
 }
 
 async function deleteClassMeetingFromCloud(uid, classId) {
   if (!uid || !classId) return;
   await initFirebase();
   if (!db || !fbFirestore) return;
-  await fbFirestore.deleteDoc(fbFirestore.doc(db, "users", uid, "classes", classId));
+  try {
+    await fbFirestore.deleteDoc(fbFirestore.doc(db, "users", uid, "classes", classId));
+  } catch (err) {
+    handleFirestoreError(err, "deleting class meeting");
+  }
 }
 
 async function saveSettingsToCloud(uid, settings) {
   if (!uid) return;
   await initFirebase();
   if (!db || !fbFirestore) return;
-  await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "settings", "app"), settings, { merge: true });
+  try {
+    await fbFirestore.setDoc(fbFirestore.doc(db, "users", uid, "settings", "app"), settings, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, "saving settings");
+  }
 }
 
-// ----------------------------------------------------------------------------
 // 6. BULK UPLOAD & "DELETE MY DATA" HELPERS
-// ----------------------------------------------------------------------------
 
 async function uploadLocalDataToCloud(uid, data) {
   if (!uid) return;
@@ -570,9 +648,7 @@ async function deleteUserCloudData(uid) {
   }
 }
 
-// ----------------------------------------------------------------------------
 // 7. EXPOSE TO WINDOW FOR SEAMLESS SCRIPT INTEGRATION
-// ----------------------------------------------------------------------------
 // Instantly exposes window.PlannerFirebase synchronously so all application
 // scripts (storage.js, auth.js, app.js) have immediate access without delays.
 window.PlannerFirebase = {
@@ -596,6 +672,8 @@ window.PlannerFirebase = {
   deleteCourseFromCloud,
   saveAssignmentToCloud,
   deleteAssignmentFromCloud,
+  bulkArchiveAssignmentsInCloud,
+  bulkRestoreAssignmentsInCloud,
   bulkDeleteAssignmentsFromCloud,
   saveClassMeetingToCloud,
   deleteClassMeetingFromCloud,
@@ -608,3 +686,5 @@ window.PlannerFirebase = {
 if (typeof window !== "undefined" && window.location && window.location.protocol !== "file:" && isFirebaseConfigured()) {
   initFirebase();
 }
+})();
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   

@@ -128,7 +128,7 @@ async function handleSignInClick() {
     alert(
       "Firebase Configuration Missing:\n\n" +
       "To enable Google Sign-In and Cloud Storage:\n" +
-      "1. Open firebase.js in your editor.\n" +
+      "1. Open firebase-config.js in your editor.\n" +
       "2. Replace the placeholder apiKey, appId, and projectId in firebaseConfig with your web app settings from the Firebase Console (Project Settings > General > Your apps)."
     );
     return;
@@ -290,7 +290,11 @@ function startCloudSubscription(uid) {
     },
     err => {
       console.error("Real-time cloud sync error:", err);
-      showAuthToast("Cloud connection error. Working offline.", "error");
+      if (err && (err.code === "permission-denied" || (err.message && err.message.toLowerCase().includes("permission")))) {
+        showAuthToast("Firestore Permission Denied: Unable to read cloud data for this account.", "error", 7000);
+      } else {
+        showAuthToast("Cloud connection error. Working offline.", "error");
+      }
     }
   );
 }

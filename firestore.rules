@@ -1,28 +1,299 @@
 rules_version = '2';
 
-// ============================================================================
-// POPULI PLANNER - FIRESTORE SECURITY RULES
-// ============================================================================
-// Enforces strict per-user document isolation.
-// Users may only read or write documents within their own `users/{userId}` hierarchy.
-// All subcollections (courses, assignments, classes, settings) inherit this rule.
-// ============================================================================
+// ===============================================================
+// POPULI PLANNER - PRODUCTION CLOUD FIRESTORE SECURITY RULES
+// ===============================================================
+//
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {userId} (must match request.auth.uid)
+// Fields:
+//   - profile: map (required)
+//       - displayName: string (required, 1-100 chars)
+//       - photoURL: string or null (optional, URL, max 2048 chars)
+//       - email: string or null (optional, valid email format, max 254 chars)
+//       - lastLoginAt: timestamp or string (required)
+//   - updatedAt: timestamp or string or null (optional)
+//   - createdAt: timestamp or string or null (optional, immutable)
+//
+// Subcollection: users/{userId}/courses
+// Document ID: {courseId} (must match course.id)
+// Fields:
+//   - id: string (required, matches {courseId}, 1-100 chars, immutable)
+//   - code: string (required, normalized course code, 1-50 chars)
+//   - name: string (required, course name, 1-200 chars)
+//   - colorNumber: number/int (optional, color palette index 0-8)
+//   - source: string (optional, e.g. "manual", "ics", "sample", max 50 chars)
+//   - updatedAt: timestamp or string or null (optional)
+//   - createdAt: timestamp or string or null (optional, immutable)
+//
+// Subcollection: users/{userId}/assignments
+// Document ID: {assignmentId} (must match assignment.id)
+// Fields:
+//   - id: string (required, matches {assignmentId}, 1-100 chars, immutable)
+//   - courseId: string (required, references parent course.id, 1-100 chars)
+//   - title: string (required, assignment title, 1-500 chars)
+//   - dueDate: string or null (optional, date string e.g. YYYY-MM-DD or ISO, max 50 chars)
+//   - completed: bool (optional, completion flag)
+//   - planned: bool (optional, checked off / completed flag)
+//   - archived: bool (optional, archived status)
+//   - archivedAt: string or null (optional, ISO timestamp string, max 50 chars)
+//   - firstSeen: number, timestamp or null (optional, timestamp/epoch ms)
+//   - lastChanged: number, timestamp or null (optional, timestamp/epoch ms)
+//   - previousDueDate: string or null (optional, previous due date string, max 50 chars)
+//   - isJustPosted: bool (optional, UI badge flag)
+//   - dueDateChanged: bool (optional, UI badge flag)
+//   - source: string (optional, "manual", "ics", "sample", max 50 chars)
+//   - externalId: string or null (optional, calendar UID string, max 500 chars)
+//   - updatedAt: timestamp or string or null (optional)
+//   - createdAt: timestamp or string or null (optional, immutable)
+//
+// Subcollection: users/{userId}/classes
+// Document ID: {classId} (must match class.id)
+// Fields:
+//   - id: string (required, matches {classId}, 1-100 chars, immutable)
+//   - courseId: string (required, references parent course.id, 1-100 chars)
+//   - days: list of numbers (optional, weekday numbers 0-6, max 7 elements)
+//   - dayOfWeek: number, string, or list (optional, weekday selector)
+//   - startTime: string or null (optional, "HH:MM" format, max 20 chars)
+//   - endTime: string or null (optional, "HH:MM" format, max 20 chars)
+//   - location: string (optional, classroom/room info, max 200 chars)
+//   - source: string (optional, "manual", "ics", "sample", max 50 chars)
+//   - unscheduled: bool (optional, true if course has no fixed meeting time)
+//   - recurrenceRule: string or null (optional, RRULE format string, max 200 chars)
+//   - externalId: string or null (optional, calendar UID string, max 500 chars)
+//   - updatedAt: timestamp or string or null (optional)
+//   - createdAt: timestamp or string or null (optional, immutable)
+//
+// Subcollection: users/{userId}/settings
+// Document ID: {settingId} (e.g. "app")
+// Fields:
+//   - ignoredUIDs: list of strings (required, calendar UIDs ignored by user, max 5000 items)
+//   - dataVersion: string (optional, data architecture version e.g. "3", max 20 chars)
+//   - uploadedAt: timestamp or string or null (optional)
+//   - updatedAt: timestamp or string or null (optional)
+//   - createdAt: timestamp or string or null (optional, immutable)
+//
+// ===============================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions for clean, readable security checks
+    // -------------------------------------------------------------
+    // Global Fallback: Default Deny
+    // -------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =============================================================
+    // Helper Functions
+    // =============================================================
+
+    // Check if the request is authenticated
     function isAuthenticated() {
       return request.auth != null;
     }
 
+    // Check if the authenticated user owns the document path
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Match each user's document and all nested subcollections
-    match /users/{userId}/{document=**} {
-      allow read, write: if isOwner(userId);
+    // Verify required fields exist in request data
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    // Verify only allowed fields exist in request data
+    function hasOnlyAllowedFields(data, allowedFields) {
+      return data.keys().hasOnly(allowedFields);
+    }
+
+    // Validate email format
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    // =============================================================
+    // Domain Validators
+    // =============================================================
+
+    // 1. User Profile Document Validator
+    function isValidUserProfile(data) {
+      return hasRequiredFields(data, ['profile']) &&
+        hasOnlyAllowedFields(data, ['profile', 'updatedAt', 'createdAt']) &&
+        data.profile is map &&
+        data.profile.keys().hasOnly(['displayName', 'photoURL', 'email', 'lastLoginAt']) &&
+        data.profile.displayName is string &&
+        data.profile.displayName.size() > 0 &&
+        data.profile.displayName.size() <= 100 &&
+        (data.profile.photoURL == null || (data.profile.photoURL is string && data.profile.photoURL.size() <= 2048)) &&
+        (data.profile.email == null || (data.profile.email is string && isValidEmail(data.profile.email) && data.profile.email.size() <= 254)) &&
+        (data.profile.lastLoginAt is timestamp || (data.profile.lastLoginAt is string && data.profile.lastLoginAt.size() <= 50)) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50) || data.updatedAt == null) &&
+        (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50) || data.createdAt == null);
+    }
+
+    function isUserImmutableUnchanged() {
+      return (!('createdAt' in resource.data) || resource.data.createdAt == null || request.resource.data.createdAt == resource.data.createdAt);
+    }
+
+    // 2. Course Document Validator
+    function isValidCourse(data, courseId) {
+      return hasRequiredFields(data, ['id', 'code', 'name']) &&
+        hasOnlyAllowedFields(data, ['id', 'code', 'name', 'colorNumber', 'source', 'updatedAt', 'createdAt']) &&
+        data.id is string &&
+        data.id == courseId &&
+        data.id.size() > 0 &&
+        data.id.size() <= 100 &&
+        data.code is string &&
+        data.code.size() > 0 &&
+        data.code.size() <= 50 &&
+        data.name is string &&
+        data.name.size() > 0 &&
+        data.name.size() <= 200 &&
+        (!('colorNumber' in data) || ((data.colorNumber is int || data.colorNumber is float || data.colorNumber is number) && data.colorNumber >= 0 && data.colorNumber <= 8)) &&
+        (!('source' in data) || (data.source is string && data.source.size() <= 50)) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50) || data.updatedAt == null) &&
+        (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50) || data.createdAt == null);
+    }
+
+    function isCourseImmutableUnchanged() {
+      return request.resource.data.id == resource.data.id &&
+        (!('createdAt' in resource.data) || resource.data.createdAt == null || request.resource.data.createdAt == resource.data.createdAt);
+    }
+
+    // 3. Assignment Document Validator
+    function isValidAssignment(data, assignmentId) {
+      return hasRequiredFields(data, ['id', 'courseId', 'title']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'courseId', 'title', 'dueDate', 'completed', 'planned',
+          'archived', 'archivedAt', 'firstSeen', 'lastChanged',
+          'previousDueDate', 'isJustPosted', 'dueDateChanged',
+          'source', 'externalId', 'updatedAt', 'createdAt'
+        ]) &&
+        data.id is string &&
+        data.id == assignmentId &&
+        data.id.size() > 0 &&
+        data.id.size() <= 100 &&
+        data.courseId is string &&
+        data.courseId.size() > 0 &&
+        data.courseId.size() <= 100 &&
+        data.title is string &&
+        data.title.size() > 0 &&
+        data.title.size() <= 500 &&
+        (!('dueDate' in data) || data.dueDate == null || (data.dueDate is string && data.dueDate.size() <= 50)) &&
+        (!('completed' in data) || data.completed is bool) &&
+        (!('planned' in data) || data.planned is bool) &&
+        (!('archived' in data) || data.archived is bool) &&
+        (!('archivedAt' in data) || data.archivedAt == null || (data.archivedAt is string && data.archivedAt.size() <= 50)) &&
+        (!('firstSeen' in data) || data.firstSeen == null || data.firstSeen is number || data.firstSeen is timestamp) &&
+        (!('lastChanged' in data) || data.lastChanged == null || data.lastChanged is number || data.lastChanged is timestamp) &&
+        (!('previousDueDate' in data) || data.previousDueDate == null || (data.previousDueDate is string && data.previousDueDate.size() <= 50)) &&
+        (!('isJustPosted' in data) || data.isJustPosted is bool) &&
+        (!('dueDateChanged' in data) || data.dueDateChanged is bool) &&
+        (!('source' in data) || (data.source is string && data.source.size() <= 50)) &&
+        (!('externalId' in data) || data.externalId == null || (data.externalId is string && data.externalId.size() <= 500)) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50) || data.updatedAt == null) &&
+        (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50) || data.createdAt == null);
+    }
+
+    function isAssignmentImmutableUnchanged() {
+      return request.resource.data.id == resource.data.id &&
+        (!('createdAt' in resource.data) || resource.data.createdAt == null || request.resource.data.createdAt == resource.data.createdAt);
+    }
+
+    // 4. Class Meeting Document Validator
+    function isValidClass(data, classId) {
+      return hasRequiredFields(data, ['id', 'courseId']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'courseId', 'days', 'dayOfWeek', 'startTime',
+          'endTime', 'location', 'source', 'unscheduled',
+          'recurrenceRule', 'externalId', 'updatedAt', 'createdAt'
+        ]) &&
+        data.id is string &&
+        data.id == classId &&
+        data.id.size() > 0 &&
+        data.id.size() <= 100 &&
+        data.courseId is string &&
+        data.courseId.size() > 0 &&
+        data.courseId.size() <= 100 &&
+        (!('days' in data) || (data.days is list && data.days.size() <= 7)) &&
+        (!('dayOfWeek' in data) || data.dayOfWeek is number || data.dayOfWeek is string || (data.dayOfWeek is list && data.dayOfWeek.size() <= 7)) &&
+        (!('startTime' in data) || data.startTime == null || (data.startTime is string && data.startTime.size() <= 20)) &&
+        (!('endTime' in data) || data.endTime == null || (data.endTime is string && data.endTime.size() <= 20)) &&
+        (!('location' in data) || (data.location is string && data.location.size() <= 200)) &&
+        (!('source' in data) || (data.source is string && data.source.size() <= 50)) &&
+        (!('unscheduled' in data) || data.unscheduled is bool) &&
+        (!('recurrenceRule' in data) || data.recurrenceRule == null || (data.recurrenceRule is string && data.recurrenceRule.size() <= 200)) &&
+        (!('externalId' in data) || data.externalId == null || (data.externalId is string && data.externalId.size() <= 500)) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50) || data.updatedAt == null) &&
+        (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50) || data.createdAt == null);
+    }
+
+    function isClassImmutableUnchanged() {
+      return request.resource.data.id == resource.data.id &&
+        (!('createdAt' in resource.data) || resource.data.createdAt == null || request.resource.data.createdAt == resource.data.createdAt);
+    }
+
+    // 5. Settings Document Validator
+    function isValidSettings(data) {
+      return hasRequiredFields(data, ['ignoredUIDs']) &&
+        hasOnlyAllowedFields(data, ['ignoredUIDs', 'dataVersion', 'uploadedAt', 'updatedAt', 'createdAt']) &&
+        data.ignoredUIDs is list &&
+        data.ignoredUIDs.size() <= 5000 &&
+        (!('dataVersion' in data) || (data.dataVersion is string && data.dataVersion.size() <= 20)) &&
+        (!('uploadedAt' in data) || data.uploadedAt is timestamp || (data.uploadedAt is string && data.uploadedAt.size() <= 50) || data.uploadedAt == null) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50) || data.updatedAt == null) &&
+        (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50) || data.createdAt == null);
+    }
+
+    // =============================================================
+    // User Namespace & Subcollections
+    // =============================================================
+
+    // User profile document
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(request.resource.data);
+      allow update: if isOwner(userId) && isValidUserProfile(request.resource.data) && isUserImmutableUnchanged();
+      allow delete: if isOwner(userId);
+
+      // Courses subcollection
+      match /courses/{courseId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidCourse(request.resource.data, courseId);
+        allow update: if isOwner(userId) && isValidCourse(request.resource.data, courseId) && isCourseImmutableUnchanged();
+        allow delete: if isOwner(userId);
+      }
+
+      // Assignments subcollection
+      match /assignments/{assignmentId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidAssignment(request.resource.data, assignmentId);
+        allow update: if isOwner(userId) && isValidAssignment(request.resource.data, assignmentId) && isAssignmentImmutableUnchanged();
+        allow delete: if isOwner(userId);
+      }
+
+      // Class schedules subcollection
+      match /classes/{classId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidClass(request.resource.data, classId);
+        allow update: if isOwner(userId) && isValidClass(request.resource.data, classId) && isClassImmutableUnchanged();
+        allow delete: if isOwner(userId);
+      }
+
+      // Settings subcollection
+      match /settings/{settingId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSettings(request.resource.data);
+        allow update: if isOwner(userId) && isValidSettings(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
     }
   }
 }

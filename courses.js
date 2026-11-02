@@ -13,7 +13,7 @@ let isCourseBackdropMouseDown = false;
 
 // Generates the human-readable summary for a course card.
 function getCourseCardSummary(course, assignments, classes) {
-  const openAssignments = assignments.filter(a => a.courseId === course.id && !a.planned);
+  const openAssignments = assignments.filter(a => a.courseId === course.id && !a.archived && !a.planned);
   const openCount = openAssignments.length;
   const assignText = `${openCount} open assignment${openCount === 1 ? "" : "s"}`;
 

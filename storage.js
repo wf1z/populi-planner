@@ -15,7 +15,7 @@ const GUEST_BACKUP_KEY = "populi_guest_backup";
 // --------------------------------------------------------------------------
 // CLOUD STORAGE & ACTIVE SESSION STATE
 // --------------------------------------------------------------------------
-let currentUser = null;
+var currentUser = null;
 let activeCloudData = {
   courses: null,
   assignments: null,
@@ -287,6 +287,16 @@ function getStoredAssignments() {
   return data ? JSON.parse(data) : [];
 }
 
+// Helper: returns only active (non-archived) assignments.
+function getActiveAssignments() {
+  return getStoredAssignments().filter(a => !a.archived);
+}
+
+// Helper: returns only archived assignments.
+function getArchivedAssignments() {
+  return getStoredAssignments().filter(a => Boolean(a.archived));
+}
+
 // Saves the entire list of assignments into active storage.
 function saveStoredAssignments(assignments) {
   if (isCloudActive()) {
@@ -303,13 +313,17 @@ function saveStoredAssignments(assignments) {
 // Creates and saves a new manual assignment referencing a courseId.
 function addAssignment(data) {
   const assignments = getStoredAssignments();
+  const isCompleted = Boolean(data.completed || data.planned);
 
   const newAssignment = {
     id: generateUniqueId("assign"),
     courseId: data.courseId,
     title: data.title.trim(),
     dueDate: data.dueDate,
-    planned: false,
+    completed: isCompleted,
+    planned: isCompleted,
+    archived: Boolean(data.archived),
+    archivedAt: data.archivedAt || null,
     firstSeen: data.isJustPosted ? Date.now() : (data.firstSeen !== undefined ? data.firstSeen : null),
     lastChanged: data.lastChanged || null,
     previousDueDate: data.previousDueDate || null,
@@ -348,6 +362,16 @@ function updateAssignment(id, data, markDueDateChanged) {
   current.title = data.title.trim();
   current.dueDate = data.dueDate;
 
+  if (data.completed !== undefined || data.planned !== undefined) {
+    const isCompleted = Boolean(data.completed !== undefined ? data.completed : data.planned);
+    current.completed = isCompleted;
+    current.planned = isCompleted;
+  }
+  if (data.archived !== undefined) {
+    current.archived = Boolean(data.archived);
+    current.archivedAt = data.archivedAt || (current.archived ? (current.archivedAt || new Date().toISOString()) : null);
+  }
+
   assignments[index] = current;
   saveStoredAssignments(assignments);
 
@@ -358,22 +382,133 @@ function updateAssignment(id, data, markDueDateChanged) {
   return current;
 }
 
-// Toggles the planned checkbox status of an assignment.
+// Toggles the completed / planned checkbox status of an assignment.
+// Checking an assignment does NOT archive it immediately; completed items stay visible (struck through).
 function toggleAssignmentPlanned(id) {
   const assignments = getStoredAssignments();
   const assignment = assignments.find(item => item.id === id);
   if (assignment) {
-    assignment.planned = !assignment.planned;
+    const newState = !assignment.planned;
+    assignment.planned = newState;
+    assignment.completed = newState;
     saveStoredAssignments(assignments);
 
     if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveAssignmentToCloud === "function") {
       window.PlannerFirebase.saveAssignmentToCloud(currentUser.uid, assignment);
     }
+    return assignment;
+  }
+  return null;
+}
+
+// Archives an assignment by setting archived: true and timestamping archivedAt.
+function archiveAssignment(id) {
+  const assignments = getStoredAssignments();
+  const assignment = assignments.find(item => item.id === id);
+  if (assignment) {
+    assignment.archived = true;
+    assignment.archivedAt = new Date().toISOString();
+    saveStoredAssignments(assignments);
+
+    if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveAssignmentToCloud === "function") {
+      window.PlannerFirebase.saveAssignmentToCloud(currentUser.uid, assignment);
+    }
+    return assignment;
+  }
+  return null;
+}
+
+// Restores an archived assignment.
+// Per requirement 7: Restore returns completed items as unchecked (completed: false, planned: false).
+function restoreAssignment(id) {
+  const assignments = getStoredAssignments();
+  const assignment = assignments.find(item => item.id === id);
+  if (assignment) {
+    assignment.archived = false;
+    assignment.archivedAt = null;
+    assignment.completed = false;
+    assignment.planned = false;
+    saveStoredAssignments(assignments);
+
+    if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.saveAssignmentToCloud === "function") {
+      window.PlannerFirebase.saveAssignmentToCloud(currentUser.uid, assignment);
+    }
+    return assignment;
+  }
+  return null;
+}
+
+// Bulk archives multiple assignments in an atomic write + batched Firestore write.
+function bulkArchiveAssignments(ids) {
+  if (!ids || ids.length === 0) return [];
+  const idSet = new Set(ids);
+  const assignments = getStoredAssignments();
+  const archivedRecords = [];
+  const nowIso = new Date().toISOString();
+
+  assignments.forEach(item => {
+    if (idSet.has(item.id)) {
+      item.archived = true;
+      item.archivedAt = nowIso;
+      archivedRecords.push(item);
+    }
+  });
+
+  saveStoredAssignments(assignments);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.bulkArchiveAssignmentsInCloud === "function") {
+    window.PlannerFirebase.bulkArchiveAssignmentsInCloud(currentUser.uid, Array.from(idSet), nowIso);
+  }
+
+  return archivedRecords;
+}
+
+// Bulk restores archived assignments, resetting them to unchecked.
+function bulkRestoreArchivedAssignments(records) {
+  if (!records || records.length === 0) return;
+  const idSet = new Set(records.map(r => r.id));
+  const assignments = getStoredAssignments();
+
+  assignments.forEach(item => {
+    if (idSet.has(item.id)) {
+      item.archived = false;
+      item.archivedAt = null;
+      item.completed = false;
+      item.planned = false;
+    }
+  });
+
+  saveStoredAssignments(assignments);
+
+  if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.bulkRestoreAssignmentsInCloud === "function") {
+    window.PlannerFirebase.bulkRestoreAssignmentsInCloud(currentUser.uid, Array.from(idSet));
   }
 }
 
-// Deletes a single assignment by its ID and records externalId in ignored list if present.
+// Archives all completed assignments matching an optional course filter.
+function archiveCompletedAssignments(courseFilter = "all") {
+  const assignments = getStoredAssignments();
+  const idsToArchive = [];
+
+  assignments.forEach(item => {
+    if (!item.archived && (item.completed || item.planned)) {
+      if (courseFilter === "all" || item.courseId === courseFilter) {
+        idsToArchive.push(item.id);
+      }
+    }
+  });
+
+  if (idsToArchive.length === 0) return [];
+  return bulkArchiveAssignments(idsToArchive);
+}
+
+// Archives an assignment from the Planner (replaces legacy delete from Planner).
 function deleteAssignment(id) {
+  return archiveAssignment(id);
+}
+
+// Permanently deletes an assignment from storage, records externalId if from ics, and removes from cloud.
+function deleteAssignmentPermanently(id) {
   const assignments = getStoredAssignments();
   const toDelete = assignments.find(item => item.id === id);
   if (toDelete && toDelete.externalId) {
@@ -385,6 +520,7 @@ function deleteAssignment(id) {
   if (isCloudActive() && window.PlannerFirebase && typeof window.PlannerFirebase.deleteAssignmentFromCloud === "function") {
     window.PlannerFirebase.deleteAssignmentFromCloud(currentUser.uid, id);
   }
+  return toDelete;
 }
 
 // Deletes multiple assignments in one atomic save and records their externalIds in populi_ignored_uids.
@@ -865,6 +1001,15 @@ function validateBackupJSON(rawText) {
         }
       }
 
+      // Sanitize assignments to ensure archived and completed flags exist safely
+      const sanitizedAssignments = data.assignments.map(a => ({
+        ...a,
+        completed: Boolean(a.completed !== undefined ? a.completed : a.planned),
+        planned: Boolean(a.completed !== undefined ? a.completed : a.planned),
+        archived: Boolean(a.archived),
+        archivedAt: a.archivedAt || null
+      }));
+
       // Validate class meetings and verify every courseId exists in courses
       for (let i = 0; i < data.classes.length; i++) {
         const m = data.classes[i];
@@ -885,7 +1030,7 @@ function validateBackupJSON(rawText) {
         valid: true,
         version: 3,
         courses: data.courses,
-        assignments: data.assignments,
+        assignments: sanitizedAssignments,
         classes: data.classes,
         ignoredUIDs: Array.isArray(data.ignoredUIDs) ? data.ignoredUIDs : []
       };
@@ -960,7 +1105,15 @@ function validateBackupJSON(rawText) {
 
       const migratedAssignments = data.assignments.map(a => {
         const courseId = getOrCreateRebuiltCourse(a.courseCode, a.courseName);
-        const copy = { ...a, courseId };
+        const isComp = Boolean(a.completed !== undefined ? a.completed : a.planned);
+        const copy = {
+          ...a,
+          courseId,
+          completed: isComp,
+          planned: isComp,
+          archived: false,
+          archivedAt: null
+        };
         delete copy.courseCode;
         delete copy.courseName;
         return copy;
@@ -1027,7 +1180,15 @@ function validateBackupJSON(rawText) {
 
       const migratedAssignments = data.assignments.map(a => {
         const courseId = matchOrCreateCourse(a.courseCode, a.courseName);
-        const copy = { ...a, courseId };
+        const isComp = Boolean(a.completed !== undefined ? a.completed : a.planned);
+        const copy = {
+          ...a,
+          courseId,
+          completed: isComp,
+          planned: isComp,
+          archived: false,
+          archivedAt: null
+        };
         delete copy.courseCode;
         delete copy.courseName;
         return copy;

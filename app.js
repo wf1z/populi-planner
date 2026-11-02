@@ -28,28 +28,39 @@ let selectedAssignmentIds = new Set();
 let currentFilteredAssignments = [];
 let lastUndoDeletedItems = null;
 let lastUndoExternalIds = null;
+let lastUndoArchivedItems = null;
+let lastUndoAction = "delete";
 let undoToastTimeout = null;
 let isBulkDeleteBackdropMouseDown = false;
 let lastBulkDeleteFocusedElement = null;
 
 // Parses a "YYYY-MM-DD" string into a local Date at midnight.
 function parseLocalDate(dateString) {
-  const [year, month, day] = dateString.split("-").map(Number);
+  if (!dateString || typeof dateString !== "string") return null;
+  const parts = dateString.split("-").map(Number);
+  if (parts.length < 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) return null;
+  const [year, month, day] = parts;
   return new Date(year, month - 1, day);
 }
 
 // Formats a "YYYY-MM-DD" string into a human-friendly string like "Oct 5".
 function formatDisplayDate(dateString) {
+  if (!dateString) return "No due date";
   const localDate = parseLocalDate(dateString);
+  if (!localDate) return dateString;
   return localDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+window.formatDisplayDate = formatDisplayDate;
+
 // Calculates the whole number of calendar days between today and the target date.
 function getDaysOffsetFromToday(dateString) {
+  if (!dateString) return 9999;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   const targetDate = parseLocalDate(dateString);
+  if (!targetDate) return 9999;
   targetDate.setHours(0, 0, 0, 0);
 
   const diffMs = targetDate.getTime() - today.getTime();
@@ -167,20 +178,20 @@ function createAssignmentCard(assignment) {
       openAssignmentDialog("edit", assignment);
     });
 
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.className = "btn-card-action btn-card-delete";
-    deleteBtn.textContent = "Delete";
-    deleteBtn.addEventListener("click", function (e) {
+    const archiveBtn = document.createElement("button");
+    archiveBtn.type = "button";
+    archiveBtn.className = "btn-card-action btn-card-archive";
+    archiveBtn.textContent = "Archive";
+    archiveBtn.title = "Archive this assignment";
+    archiveBtn.addEventListener("click", function (e) {
       e.stopPropagation();
-      if (confirm(`Are you sure you want to delete "${assignment.title}"?`)) {
-        deleteAssignment(assignment.id);
-        renderApp();
-      }
+      const archivedItem = archiveAssignment(assignment.id);
+      renderApp();
+      showUndoToast(1, "archive", [archivedItem || assignment]);
     });
 
     actionWrapper.appendChild(editBtn);
-    actionWrapper.appendChild(deleteBtn);
+    actionWrapper.appendChild(archiveBtn);
     header.appendChild(actionWrapper);
   }
 
@@ -229,11 +240,15 @@ function toggleCardSelection(id) {
 function updateSelectActionBar() {
   const countText = document.getElementById("select-count-text");
   const deleteBtn = document.getElementById("btn-delete-selected");
+  const archiveBtn = document.getElementById("btn-archive-selected");
   if (countText) {
     countText.textContent = `${selectedAssignmentIds.size} selected`;
   }
   if (deleteBtn) {
     deleteBtn.disabled = selectedAssignmentIds.size === 0;
+  }
+  if (archiveBtn) {
+    archiveBtn.disabled = selectedAssignmentIds.size === 0;
   }
 }
 
@@ -322,8 +337,8 @@ function handleBulkDeleteExecute() {
   showUndoToast(deletedRecords.length);
 }
 
-// Shows the 10-second undo toast after bulk deletion.
-function showUndoToast(count) {
+// Shows the 10-second undo toast after deletion or archiving.
+function showUndoToast(count, action = "delete", items = null, externalIds = null) {
   const toast = document.getElementById("undo-toast");
   const textEl = document.getElementById("undo-toast-text");
   const undoBtn = document.getElementById("btn-undo-delete");
@@ -334,7 +349,19 @@ function showUndoToast(count) {
     undoToastTimeout = null;
   }
 
-  textEl.textContent = `Deleted ${count} assignment${count !== 1 ? "s" : ""}.`;
+  lastUndoAction = action;
+  if (action === "archive") {
+    lastUndoArchivedItems = items || [];
+    textEl.textContent = `Archived ${count} assignment${count !== 1 ? "s" : ""}.`;
+  } else if (action === "restore") {
+    lastUndoArchivedItems = items || [];
+    textEl.textContent = `Restored ${count} assignment${count !== 1 ? "s" : ""} to Planner.`;
+  } else {
+    lastUndoDeletedItems = items || [];
+    lastUndoExternalIds = externalIds || [];
+    textEl.textContent = `Deleted ${count} assignment${count !== 1 ? "s" : ""}.`;
+  }
+
   toast.style.display = "flex";
 
   if (undoBtn && typeof undoBtn.focus === "function") {
@@ -345,8 +372,11 @@ function showUndoToast(count) {
     hideUndoToast();
     lastUndoDeletedItems = null;
     lastUndoExternalIds = null;
+    lastUndoArchivedItems = null;
   }, 10000);
 }
+
+window.showUndoToast = showUndoToast;
 
 // Hides the undo toast bar.
 function hideUndoToast() {
@@ -360,8 +390,24 @@ function hideUndoToast() {
   }
 }
 
-// Handles user clicking the Undo button to restore deleted items.
+// Handles user clicking the Undo button to restore deleted or archived items.
 function handleUndoDelete() {
+  if (lastUndoAction === "archive" && lastUndoArchivedItems && lastUndoArchivedItems.length > 0) {
+    bulkRestoreArchivedAssignments(lastUndoArchivedItems);
+    hideUndoToast();
+    lastUndoArchivedItems = null;
+    renderApp();
+    return;
+  }
+
+  if (lastUndoAction === "restore" && lastUndoArchivedItems && lastUndoArchivedItems.length > 0) {
+    bulkArchiveAssignments(lastUndoArchivedItems.map(a => a.id));
+    hideUndoToast();
+    lastUndoArchivedItems = null;
+    renderApp();
+    return;
+  }
+
   if (lastUndoDeletedItems && lastUndoDeletedItems.length > 0) {
     bulkRestoreAssignments(lastUndoDeletedItems, lastUndoExternalIds);
     hideUndoToast();
@@ -868,17 +914,19 @@ function processCalendarText(rawText) {
   }
 }
 
-// Switches between the Planner, Schedule, and Courses tabs and toggles views and action buttons.
+// Switches between the Planner, Schedule, Courses, and Archive tabs and toggles views and action buttons.
 function switchTab(tabName) {
   currentActiveTab = tabName;
 
   const plannerTab = document.getElementById("tab-btn-planner");
   const scheduleTab = document.getElementById("tab-btn-schedule");
   const coursesTab = document.getElementById("tab-btn-courses");
+  const archiveTab = document.getElementById("tab-btn-archive");
 
   const plannerPanel = document.getElementById("panel-planner");
   const schedulePanel = document.getElementById("panel-schedule");
   const coursesPanel = document.getElementById("panel-courses");
+  const archivePanel = document.getElementById("panel-archive");
 
   const topActionBtn = document.getElementById("top-action-btn");
 
@@ -886,10 +934,12 @@ function switchTab(tabName) {
     if (plannerTab) plannerTab.setAttribute("aria-selected", "true");
     if (scheduleTab) scheduleTab.setAttribute("aria-selected", "false");
     if (coursesTab) coursesTab.setAttribute("aria-selected", "false");
+    if (archiveTab) archiveTab.setAttribute("aria-selected", "false");
 
     if (plannerPanel) plannerPanel.style.display = "block";
     if (schedulePanel) schedulePanel.style.display = "none";
     if (coursesPanel) coursesPanel.style.display = "none";
+    if (archivePanel) archivePanel.style.display = "none";
 
     topActionBtn.style.display = "inline-block";
     topActionBtn.textContent = "+ Add assignment";
@@ -897,10 +947,12 @@ function switchTab(tabName) {
     if (plannerTab) plannerTab.setAttribute("aria-selected", "false");
     if (scheduleTab) scheduleTab.setAttribute("aria-selected", "true");
     if (coursesTab) coursesTab.setAttribute("aria-selected", "false");
+    if (archiveTab) archiveTab.setAttribute("aria-selected", "false");
 
     if (plannerPanel) plannerPanel.style.display = "none";
     if (schedulePanel) schedulePanel.style.display = "block";
     if (coursesPanel) coursesPanel.style.display = "none";
+    if (archivePanel) archivePanel.style.display = "none";
 
     topActionBtn.style.display = "inline-block";
     topActionBtn.textContent = "+ Add class";
@@ -908,13 +960,30 @@ function switchTab(tabName) {
     if (plannerTab) plannerTab.setAttribute("aria-selected", "false");
     if (scheduleTab) scheduleTab.setAttribute("aria-selected", "false");
     if (coursesTab) coursesTab.setAttribute("aria-selected", "true");
+    if (archiveTab) archiveTab.setAttribute("aria-selected", "false");
 
     if (plannerPanel) plannerPanel.style.display = "none";
     if (schedulePanel) schedulePanel.style.display = "none";
     if (coursesPanel) coursesPanel.style.display = "block";
+    if (archivePanel) archivePanel.style.display = "none";
 
     topActionBtn.style.display = "inline-block";
     topActionBtn.textContent = "+ Add course";
+  } else if (tabName === "archive") {
+    if (plannerTab) plannerTab.setAttribute("aria-selected", "false");
+    if (scheduleTab) scheduleTab.setAttribute("aria-selected", "false");
+    if (coursesTab) coursesTab.setAttribute("aria-selected", "false");
+    if (archiveTab) archiveTab.setAttribute("aria-selected", "true");
+
+    if (plannerPanel) plannerPanel.style.display = "none";
+    if (schedulePanel) schedulePanel.style.display = "none";
+    if (coursesPanel) coursesPanel.style.display = "none";
+    if (archivePanel) archivePanel.style.display = "block";
+
+    topActionBtn.style.display = "none";
+    if (typeof window.renderArchiveTab === "function") {
+      window.renderArchiveTab();
+    }
   }
 }
 
@@ -931,6 +1000,8 @@ function renderApp() {
   const activeDateKey = (!isDialogOpen && activeEl && activeEl.dataset) ? activeEl.dataset.dateKey : null;
 
   const allAssignments = getStoredAssignments();
+  const activeAssignments = allAssignments.filter(a => !a.archived);
+  const archivedAssignments = allAssignments.filter(a => Boolean(a.archived));
   const allClasses = getStoredClasses();
   const selectedCourse = document.getElementById("course-filter").value;
   const welcomeBox = document.getElementById("welcome-empty-state");
@@ -945,16 +1016,16 @@ function renderApp() {
     welcomeBox.style.display = "none";
   }
 
-  // Filter items by course filter
-  const filtered = allAssignments.filter(item => {
+  // Filter items by course filter (only active, non-archived assignments)
+  const filtered = activeAssignments.filter(item => {
     return selectedCourse === "all" || item.courseId === selectedCourse;
   });
   currentFilteredAssignments = filtered;
 
-  // Prune any deleted assignment IDs from selection
-  const existingIds = new Set(allAssignments.map(a => a.id));
+  // Prune any deleted or archived assignment IDs from selection
+  const existingActiveIds = new Set(activeAssignments.map(a => a.id));
   for (const id of selectedAssignmentIds) {
-    if (!existingIds.has(id)) {
+    if (!existingActiveIds.has(id)) {
       selectedAssignmentIds.delete(id);
     }
   }
@@ -964,6 +1035,7 @@ function renderApp() {
   const actionBar = document.getElementById("select-action-bar");
   const selectCountText = document.getElementById("select-count-text");
   const btnDeleteSelected = document.getElementById("btn-delete-selected");
+  const btnArchiveSelected = document.getElementById("btn-archive-selected");
   const mainCol = document.querySelector(".main-column");
 
   if (selectBtn) {
@@ -979,8 +1051,30 @@ function renderApp() {
   if (btnDeleteSelected) {
     btnDeleteSelected.disabled = selectedAssignmentIds.size === 0;
   }
+  if (btnArchiveSelected) {
+    btnArchiveSelected.disabled = selectedAssignmentIds.size === 0;
+  }
   if (mainCol) {
     mainCol.classList.toggle("has-select-bar", isSelectMode);
+  }
+
+  // Archive completed button in Planner filter bar
+  const completedInView = filtered.filter(a => a.completed || a.planned);
+  const btnArchiveCompleted = document.getElementById("btn-archive-completed");
+  if (btnArchiveCompleted) {
+    if (completedInView.length > 0 && !isSelectMode) {
+      btnArchiveCompleted.style.display = "inline-flex";
+      btnArchiveCompleted.textContent = `Archive completed (${completedInView.length})`;
+    } else {
+      btnArchiveCompleted.style.display = "none";
+    }
+  }
+
+  // Update Archive tab count badge
+  const archiveTabCount = document.getElementById("archive-tab-count");
+  if (archiveTabCount) {
+    archiveTabCount.textContent = archivedAssignments.length;
+    archiveTabCount.style.display = archivedAssignments.length > 0 ? "inline-flex" : "none";
   }
 
   // Buckets
@@ -1028,7 +1122,7 @@ function renderApp() {
   renderSection("cards-this-week", "count-this-week", thisWeekList);
   renderSection("cards-later", "count-later", laterList);
 
-  // Redraw month calendar using the same course-filtered list
+  // Redraw month calendar using the same course-filtered active list
   if (typeof window.renderCalendar === "function") {
     window.renderCalendar(filtered);
   }
@@ -1041,6 +1135,11 @@ function renderApp() {
   // Redraw Courses tab (course cards list)
   if (typeof window.renderCoursesTab === "function") {
     window.renderCoursesTab();
+  }
+
+  // Redraw Archive tab
+  if (typeof window.renderArchiveTab === "function") {
+    window.renderArchiveTab();
   }
 
   // Ensure active tab view is preserved
@@ -1102,6 +1201,8 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("tab-btn-planner").addEventListener("click", () => switchTab("planner"));
   document.getElementById("tab-btn-schedule").addEventListener("click", () => switchTab("schedule"));
   document.getElementById("tab-btn-courses").addEventListener("click", () => switchTab("courses"));
+  const tabBtnArchive = document.getElementById("tab-btn-archive");
+  if (tabBtnArchive) tabBtnArchive.addEventListener("click", () => switchTab("archive"));
 
   // Top action button (+ Add assignment, + Add class, or + Add course)
   document.getElementById("top-action-btn").addEventListener("click", function () {
@@ -1335,6 +1436,33 @@ document.addEventListener("DOMContentLoaded", function () {
   if (btnDeleteSelected) {
     btnDeleteSelected.addEventListener("click", function () {
       openBulkDeleteConfirm();
+    });
+  }
+
+  // Select Mode Bulk Archive
+  const btnArchiveSelected = document.getElementById("btn-archive-selected");
+  if (btnArchiveSelected) {
+    btnArchiveSelected.addEventListener("click", function () {
+      const idsToArchive = Array.from(selectedAssignmentIds);
+      if (idsToArchive.length === 0) return;
+      const archived = bulkArchiveAssignments(idsToArchive);
+      selectedAssignmentIds.clear();
+      setSelectMode(false);
+      renderApp();
+      showUndoToast(archived.length, "archive", archived);
+    });
+  }
+
+  // Archive Completed assignments in view
+  const btnArchiveCompleted = document.getElementById("btn-archive-completed");
+  if (btnArchiveCompleted) {
+    btnArchiveCompleted.addEventListener("click", function () {
+      const selectedCourse = document.getElementById("course-filter").value;
+      const archived = archiveCompletedAssignments(selectedCourse);
+      if (archived.length > 0) {
+        renderApp();
+        showUndoToast(archived.length, "archive", archived);
+      }
     });
   }
 

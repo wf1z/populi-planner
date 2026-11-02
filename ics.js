@@ -682,17 +682,20 @@ function normalizeTitle(title) {
 }
 
 // Checks if an event matches an existing assignment in the planner.
+// Prefers exact externalId matches first over fuzzy ones.
 function findExistingAssignmentDuplicate(event, guessedCode, existingAssignments, existingCourses) {
-  if (!event || !event.dtStart || !event.dtStart.dateKey) return null;
+  if (!event) return null;
 
-  // 1. Direct match on externalId
-  const byExternalId = existingAssignments.find(a => a.externalId === event.uid);
-  if (byExternalId) {
-    return byExternalId;
+  // 1. Direct match on externalId (strict preference)
+  if (event.uid) {
+    const byExternalId = existingAssignments.find(a => a.externalId === event.uid);
+    if (byExternalId) {
+      return byExternalId;
+    }
   }
 
   // 2. Fuzzy match on normalized course, due date, and normalized title
-  if (!guessedCode) return null;
+  if (!event.dtStart || !event.dtStart.dateKey || !guessedCode) return null;
 
   const normalizedGuessed = normalizeCourseCode(guessedCode);
   const matchingCourses = existingCourses.filter(c => normalizeCourseCode(c.code) === normalizedGuessed);
@@ -705,9 +708,12 @@ function findExistingAssignmentDuplicate(event, guessedCode, existingAssignments
 
   for (const a of existingAssignments) {
     if (matchingCourseIds.has(a.courseId) && a.dueDate === eventDateKey) {
-      const cleanExisting = normalizeTitle(a.title);
-      if (cleanExisting === cleanSummary || cleanExisting === cleanStripped) {
-        return a;
+      // Prefer exact externalId: do not fuzzy-match to an existing assignment that is already bound to a different externalId
+      if (!a.externalId) {
+        const cleanExisting = normalizeTitle(a.title);
+        if (cleanExisting === cleanSummary || cleanExisting === cleanStripped) {
+          return a;
+        }
       }
     }
   }
@@ -766,9 +772,11 @@ function buildCalendarPreviewDOM(
     if (duplicateMatch) {
       item.isDuplicate = true;
       item.matchedAssignmentId = duplicateMatch.id;
+      item.isArchived = Boolean(duplicateMatch.archived);
     } else {
       item.isDuplicate = false;
       item.matchedAssignmentId = null;
+      item.isArchived = false;
     }
 
     item.isPreviouslyIgnored = ignoredUIDs.has(item.uid);
@@ -789,7 +797,7 @@ function buildCalendarPreviewDOM(
 
   // Default row action choices (considering cutoff date)
   const rowActionChoices = savedRowActions ? [...savedRowActions] : parseResult.events.map(item => {
-    if (item.isDuplicate || item.isPreviouslyIgnored) {
+    if (item.isArchived || item.isDuplicate || item.isPreviouslyIgnored) {
       return "skip";
     }
     if (item.eventType === "repeating") {
@@ -1010,7 +1018,12 @@ function buildCalendarPreviewDOM(
     tdTitle.appendChild(titleHeader);
 
     // Badges & Notices
-    if (item.isDuplicate) {
+    if (item.isArchived) {
+      const archBadge = document.createElement("span");
+      archBadge.className = "ics-pill ics-pill-archived";
+      archBadge.textContent = "Archived";
+      tdTitle.appendChild(archBadge);
+    } else if (item.isDuplicate) {
       const dupBadge = document.createElement("span");
       dupBadge.className = "ics-pill ics-pill-duplicate";
       dupBadge.textContent = "Already in your planner";
@@ -1246,9 +1259,11 @@ function prepareImportPlan(parseResult, courseMappings, rowActions, cutoffDate) 
       if (dupMatch) {
         item.isDuplicate = true;
         item.matchedAssignmentId = dupMatch.id;
+        item.isArchived = Boolean(dupMatch.archived);
       } else {
         item.isDuplicate = false;
         item.matchedAssignmentId = null;
+        item.isArchived = false;
       }
     }
   });
@@ -1316,6 +1331,7 @@ function prepareImportPlan(parseResult, courseMappings, rowActions, cutoffDate) 
   const meetingsToGroup = [];
   const skippedUIDs = [];
   let cutoffSkippedCount = 0;
+  let archivedSkippedCount = 0;
 
   // Track all external IDs present in this imported file
   const fileExternalIds = new Set();
@@ -1428,6 +1444,11 @@ function prepareImportPlan(parseResult, courseMappings, rowActions, cutoffDate) 
         uid: item.uid,
         summary: item.summary
       });
+      return;
+    }
+
+    if (action === "skip" && item.isArchived) {
+      archivedSkippedCount++;
     }
   });
 
@@ -1526,6 +1547,7 @@ function prepareImportPlan(parseResult, courseMappings, rowActions, cutoffDate) 
     skippedUIDs: skippedUIDs,
     disappearedCount: disappearedCount,
     cutoffSkippedCount: cutoffSkippedCount,
+    archivedSkippedCount: archivedSkippedCount,
     cutoffDate: cutoffDate || null,
     summaryHeadline: summaryHeadline
   };
@@ -1654,6 +1676,12 @@ function buildConfirmSummaryDOM(importPlan, onConfirm, onBack, onCancel) {
   if (importPlan.matchedExistingAssignments.length > 0) {
     const li = document.createElement("li");
     li.textContent = `${importPlan.matchedExistingAssignments.length} assignment(s) already in your planner were linked to calendar IDs without creating duplicates.`;
+    noteUl.appendChild(li);
+  }
+
+  if (importPlan.archivedSkippedCount > 0) {
+    const li = document.createElement("li");
+    li.textContent = `${importPlan.archivedSkippedCount} archived assignment(s) in this calendar file were kept skipped and will remain archived.`;
     noteUl.appendChild(li);
   }
 

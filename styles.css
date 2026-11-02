@@ -2093,15 +2093,81 @@ dialog.modal-dialog::backdrop {
   .new-course-box {
     grid-template-columns: 1fr;
   }
+  .top-bar {
+    height: auto;
+  }
   .top-bar-inner {
-    padding: 0 var(--space-sm);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "title actions"
+      "tabs tabs";
+    height: auto;
+    padding: 6px var(--space-sm) 0;
+    gap: 4px var(--space-sm);
+  }
+  .top-bar-left {
+    display: contents;
   }
   .app-title {
-    font-size: 1.1rem;
+    grid-area: title;
+    font-size: 1.05rem;
+    align-self: center;
+    white-space: nowrap;
+  }
+  .top-bar-actions {
+    grid-area: actions;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    align-self: center;
+  }
+  .btn-top-add {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 0.8rem;
+  }
+  .btn-google-signin {
+    padding: 4px 8px;
+    font-size: 0.8rem;
+  }
+  .sync-status {
+    padding: 3px 6px;
+    font-size: 0.72rem;
+  }
+  .top-bar-tabs {
+    grid-area: tabs;
+    width: 100%;
+    height: 38px;
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    gap: 2px;
+  }
+  .top-bar-tabs::-webkit-scrollbar {
+    display: none;
   }
   .tab-btn {
-    padding: 0 var(--space-sm);
-    font-size: 0.88rem;
+    flex: 1 1 0;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    text-align: center;
+  }
+  .tab-count-badge {
+    margin-left: 3px;
+    padding: 0 4px;
+    font-size: 0.68rem;
+    min-width: 16px;
+    height: 16px;
   }
   .ics-input-grid {
     grid-template-columns: 1fr;
@@ -2361,4 +2427,199 @@ dialog.modal-dialog::backdrop {
     bottom: var(--space-md);
     max-width: none;
   }
+}
+
+/* ==========================================================================
+   ARCHIVE FEATURE STYLES (STAGE 1)
+   ========================================================================== */
+
+/* Tab count badge */
+.tab-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: var(--radius-full);
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tab-btn[aria-selected="true"] .tab-count-badge {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+/* Archive Completed button in Planner filter bar */
+.btn-archive-completed {
+  margin-left: auto;
+  font-size: 0.85rem;
+}
+
+/* Card Archive button hover effect */
+.btn-card-archive:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* Calendar Import Archived pill */
+.ics-pill-archived {
+  background-color: var(--course-tag-bg);
+  color: var(--course-tag-text);
+  border: 1px solid var(--course-tag-border);
+}
+
+/* Archive Tab Layout */
+.archive-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding-bottom: var(--space-xl);
+}
+
+.archive-course-group {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+  box-shadow: var(--card-shadow);
+}
+
+.archive-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--card-border);
+  margin-bottom: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.archive-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.archive-course-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.archive-group-count {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.archive-items-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.archive-card {
+  background-color: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  transition: border-color 0.15s ease;
+}
+
+.archive-card:hover {
+  border-color: var(--text-dim);
+}
+
+.archive-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.archive-card-pills {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.archive-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.archive-pill-muted {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  border: 1px solid var(--card-border);
+}
+
+.archive-pill-completed {
+  background-color: var(--badge-new-bg);
+  color: var(--badge-new-text);
+  border: 1px solid var(--badge-new-border);
+}
+
+.archive-card-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  line-height: 1.35;
+}
+
+.archive-card-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.archive-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.archive-meta-date {
+  color: var(--text-dim);
+}
+
+.archive-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+  padding-top: var(--space-xs);
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.btn-restore-assignment {
+  padding: 3px 10px;
+  font-size: 0.78rem;
+}
+
+.btn-delete-forever {
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  margin-left: auto;
 }
