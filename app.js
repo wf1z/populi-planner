@@ -987,6 +987,109 @@ function switchTab(tabName) {
   }
 }
 
+// Determines the local Monday-to-Sunday date range for the current week.
+function getLocalCurrentWeekRange() {
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const dayOffsetToMonday = (day + 6) % 7;
+
+  const mondayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOffsetToMonday);
+  const sundayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOffsetToMonday + 6);
+
+  const formatKey = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dt = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dt}`;
+  };
+
+  return {
+    mondayKey: formatKey(mondayDate),
+    sundayKey: formatKey(sundayDate)
+  };
+}
+
+/**
+ * Updates the weekly progress bar at the top of the Planner tab.
+ * Y is the number of assignments due in the current week (Monday to Sunday).
+ * X is how many of those are completed.
+ * - Completed items include archived completed items (completed || planned).
+ * - Excludes archived items that were not completed.
+ * - Safely handles missing/null dueDate without errors.
+ * - If Y is 0, displays "Nothing due this week".
+ */
+function updateWeeklyProgressBar() {
+  const container = document.getElementById("weekly-progress-card");
+  const textEl = document.getElementById("weekly-progress-text");
+  const percentEl = document.getElementById("weekly-progress-percent");
+  const trackEl = document.getElementById("weekly-progress-bar");
+  const fillEl = document.getElementById("weekly-progress-fill");
+
+  if (!container || !textEl || !trackEl || !fillEl) return;
+
+  const { mondayKey, sundayKey } = getLocalCurrentWeekRange();
+  const allAssignments = (typeof getStoredAssignments === "function") ? getStoredAssignments() : [];
+
+  let totalDueThisWeek = 0;
+  let completedThisWeek = 0;
+
+  for (const a of allAssignments) {
+    // Missing dueDate or not a string: safely skip without error
+    if (!a || !a.dueDate || typeof a.dueDate !== "string") continue;
+    const due = a.dueDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) continue;
+    if (due < mondayKey || due > sundayKey) continue;
+
+    const isCompleted = Boolean(a.completed || a.planned);
+
+    if (a.archived) {
+      // Exclude archived items that were not completed
+      if (!isCompleted) continue;
+      // Include archived completed items in both counts
+      totalDueThisWeek++;
+      completedThisWeek++;
+    } else {
+      // Active item due this week
+      totalDueThisWeek++;
+      if (isCompleted) {
+        completedThisWeek++;
+      }
+    }
+  }
+
+  if (totalDueThisWeek === 0) {
+    container.classList.add("is-empty");
+    textEl.textContent = "Nothing due this week";
+    if (percentEl) {
+      percentEl.style.display = "none";
+      percentEl.textContent = "";
+    }
+    trackEl.style.display = "none";
+    fillEl.style.width = "0%";
+    trackEl.setAttribute("aria-valuenow", "0");
+    trackEl.setAttribute("aria-valuemin", "0");
+    trackEl.setAttribute("aria-valuemax", "0");
+    trackEl.setAttribute("aria-valuetext", "Nothing due this week");
+  } else {
+    container.classList.remove("is-empty");
+    const percent = Math.min(100, Math.round((completedThisWeek / totalDueThisWeek) * 100));
+    textEl.textContent = `${completedThisWeek} of ${totalDueThisWeek} done this week`;
+    if (percentEl) {
+      percentEl.style.display = "inline-block";
+      percentEl.textContent = `${percent}%`;
+    }
+    trackEl.style.display = "block";
+    fillEl.style.width = `${percent}%`;
+    trackEl.setAttribute("aria-valuenow", String(completedThisWeek));
+    trackEl.setAttribute("aria-valuemin", "0");
+    trackEl.setAttribute("aria-valuemax", String(totalDueThisWeek));
+    trackEl.setAttribute("aria-valuetext", `${completedThisWeek} of ${totalDueThisWeek} done this week (${percent}%)`);
+  }
+}
+
+window.updateWeeklyProgressBar = updateWeeklyProgressBar;
+window.getLocalCurrentWeekRange = getLocalCurrentWeekRange;
+
 // Renders all assignment sections, the calendar, and the schedule, preserving active focus.
 function renderApp() {
   const assignmentDialog = document.getElementById("assignment-dialog");
@@ -1008,6 +1111,9 @@ function renderApp() {
 
   // Sync courses across assignments, classes, and dialog dropdowns
   syncAllCourseDropdowns();
+
+  // Update weekly progress bar at top of Planner tab
+  updateWeeklyProgressBar();
 
   // Show welcome state if no assignments exist at all
   if (allAssignments.length === 0) {

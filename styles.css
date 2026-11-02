@@ -211,6 +211,113 @@ body {
 }
 
 /* ==========================================================================
+   WEEKLY PROGRESS BAR (Top of Planner Tab)
+   ========================================================================== */
+.weekly-progress-card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 14px var(--space-md);
+  margin-bottom: var(--space-md);
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.weekly-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: 22px;
+}
+
+.weekly-progress-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.weekly-progress-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.weekly-progress-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.weekly-progress-card.is-empty .weekly-progress-text {
+  color: var(--text-dim);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.weekly-progress-card.is-empty .weekly-progress-icon {
+  color: var(--text-dim);
+}
+
+.weekly-progress-percent {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--primary);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.weekly-progress-track {
+  width: 100%;
+  height: 8px;
+  background-color: var(--input-bg);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  position: relative;
+}
+
+.weekly-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #c792a7 0%, var(--primary) 100%);
+  border-radius: var(--radius-full);
+  transition: width 300ms ease;
+  width: 0%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weekly-progress-fill {
+    transition: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .weekly-progress-card {
+    padding: 10px 12px;
+    margin-bottom: var(--space-sm);
+  }
+
+  .weekly-progress-text {
+    font-size: 0.88rem;
+  }
+
+  .weekly-progress-percent {
+    font-size: 0.82rem;
+  }
+
+  .weekly-progress-track {
+    height: 6px;
+  }
+}
+
+/* ==========================================================================
    COMPACT COURSE FILTER BAR
    ========================================================================== */
 .compact-filter-bar {
