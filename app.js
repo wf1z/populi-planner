@@ -34,6 +34,35 @@ let undoToastTimeout = null;
 let isBulkDeleteBackdropMouseDown = false;
 let lastBulkDeleteFocusedElement = null;
 
+// Animation & Entrance state tracking (Subtle, fast 150-300ms transitions)
+const enteringAssignmentIds = new Set();
+let pendingRenderAppTimer = null;
+let previousWeeklyProgressPercent = null;
+
+function markAssignmentEntering(id) {
+  enteringAssignmentIds.add(id);
+  setTimeout(() => {
+    enteringAssignmentIds.delete(id);
+  }, 500);
+}
+window.markAssignmentEntering = markAssignmentEntering;
+
+function scheduleRenderApp(delay = 220) {
+  if (pendingRenderAppTimer) {
+    clearTimeout(pendingRenderAppTimer);
+  }
+  const isReduced = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (isReduced || delay <= 0) {
+    pendingRenderAppTimer = null;
+    renderApp();
+    return;
+  }
+  pendingRenderAppTimer = setTimeout(() => {
+    pendingRenderAppTimer = null;
+    renderApp();
+  }, delay);
+}
+
 // Parses a "YYYY-MM-DD" string into a local Date at midnight.
 function parseLocalDate(dateString) {
   if (!dateString || typeof dateString !== "string") return null;
@@ -96,7 +125,8 @@ function createBadgeElement(assignment) {
 function createAssignmentCard(assignment) {
   const card = document.createElement("article");
   const isSelected = selectedAssignmentIds.has(assignment.id);
-  card.className = `assignment-card ${assignment.planned ? "is-planned" : ""} ${isSelectMode ? "is-select-mode" : ""} ${isSelected ? "is-selected" : ""}`;
+  const isEntering = enteringAssignmentIds.has(assignment.id);
+  card.className = `assignment-card ${assignment.planned ? "is-planned" : ""} ${isSelectMode ? "is-select-mode" : ""} ${isSelected ? "is-selected" : ""} ${isEntering ? "is-entering" : ""}`.trim();
   card.id = `card-${assignment.id}`;
 
   if (isSelectMode) {
@@ -137,8 +167,29 @@ function createAssignmentCard(assignment) {
     checkbox.checked = Boolean(assignment.planned);
     checkbox.title = "Mark as planned";
     checkbox.addEventListener("change", function () {
+      const isChecked = checkbox.checked;
+      checkbox.classList.remove("is-popping");
+      void checkbox.offsetWidth;
+      checkbox.classList.add("is-popping");
+      card.classList.toggle("is-planned", isChecked);
       toggleAssignmentPlanned(assignment.id);
-      renderApp();
+      updateWeeklyProgressBar();
+
+      // Instantly update Archive completed button count if visible
+      const btnArchiveCompleted = document.getElementById("btn-archive-completed");
+      if (btnArchiveCompleted) {
+        const activeAssignments = getStoredAssignments().filter(a => !a.archived);
+        const selectedCourse = document.getElementById("course-filter") ? document.getElementById("course-filter").value : "all";
+        const completedCount = activeAssignments.filter(a => (selectedCourse === "all" || a.courseId === selectedCourse) && Boolean(a.completed || a.planned)).length;
+        if (completedCount > 0 && !isSelectMode) {
+          btnArchiveCompleted.style.display = "inline-flex";
+          btnArchiveCompleted.textContent = `Archive completed (${completedCount})`;
+        } else {
+          btnArchiveCompleted.style.display = "none";
+        }
+      }
+
+      scheduleRenderApp(220);
     });
   }
   checkboxWrapper.appendChild(checkbox);
@@ -185,9 +236,13 @@ function createAssignmentCard(assignment) {
     archiveBtn.title = "Archive this assignment";
     archiveBtn.addEventListener("click", function (e) {
       e.stopPropagation();
-      const archivedItem = archiveAssignment(assignment.id);
-      renderApp();
-      showUndoToast(1, "archive", [archivedItem || assignment]);
+      const isReduced = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      card.classList.add("card-anim-archive");
+      setTimeout(() => {
+        const archivedItem = archiveAssignment(assignment.id);
+        renderApp();
+        showUndoToast(1, "archive", [archivedItem || assignment]);
+      }, isReduced ? 0 : 200);
     });
 
     actionWrapper.appendChild(editBtn);
@@ -362,6 +417,9 @@ function showUndoToast(count, action = "delete", items = null, externalIds = nul
     textEl.textContent = `Deleted ${count} assignment${count !== 1 ? "s" : ""}.`;
   }
 
+  toast.classList.remove("is-sliding-in");
+  void toast.offsetWidth;
+  toast.classList.add("is-sliding-in");
   toast.style.display = "flex";
 
   if (undoBtn && typeof undoBtn.focus === "function") {
@@ -382,6 +440,7 @@ window.showUndoToast = showUndoToast;
 function hideUndoToast() {
   const toast = document.getElementById("undo-toast");
   if (toast) {
+    toast.classList.remove("is-sliding-in");
     toast.style.display = "none";
   }
   if (undoToastTimeout) {
@@ -393,6 +452,7 @@ function hideUndoToast() {
 // Handles user clicking the Undo button to restore deleted or archived items.
 function handleUndoDelete() {
   if (lastUndoAction === "archive" && lastUndoArchivedItems && lastUndoArchivedItems.length > 0) {
+    lastUndoArchivedItems.forEach(item => markAssignmentEntering(item.id));
     bulkRestoreArchivedAssignments(lastUndoArchivedItems);
     hideUndoToast();
     lastUndoArchivedItems = null;
@@ -409,6 +469,7 @@ function handleUndoDelete() {
   }
 
   if (lastUndoDeletedItems && lastUndoDeletedItems.length > 0) {
+    lastUndoDeletedItems.forEach(item => markAssignmentEntering(item.id));
     bulkRestoreAssignments(lastUndoDeletedItems, lastUndoExternalIds);
     hideUndoToast();
     lastUndoDeletedItems = null;
@@ -683,12 +744,15 @@ function handleFormSubmit(event) {
     updateAssignment(currentEditingId, values, markDueDateChanged);
   } else {
     const isJustPosted = document.getElementById("form-just-posted").checked;
-    addAssignment({
+    const created = addAssignment({
       courseId: values.courseId,
       title: values.title,
       dueDate: values.dueDate,
       isJustPosted: isJustPosted
     });
+    if (created && created.id) {
+      markAssignmentEntering(created.id);
+    }
   }
 
   closeAssignmentDialog();
@@ -701,12 +765,15 @@ function handleSaveAndAddAnother() {
   if (!values) return;
 
   const isJustPosted = document.getElementById("form-just-posted").checked;
-  addAssignment({
+  const created = addAssignment({
     courseId: values.courseId,
     title: values.title,
     dueDate: values.dueDate,
     isJustPosted: isJustPosted
   });
+  if (created && created.id) {
+    markAssignmentEntering(created.id);
+  }
 
   // Keep course and due date intact, clear title and uncheck 'just posted'
   const titleInput = document.getElementById("form-title");
@@ -985,6 +1052,26 @@ function switchTab(tabName) {
       window.renderArchiveTab();
     }
   }
+
+  // Manage short fade between panels (Respects prefers-reduced-motion)
+  const allPanels = [plannerPanel, schedulePanel, coursesPanel, archivePanel];
+  allPanels.forEach(p => {
+    if (p) p.classList.remove("is-active-tab");
+  });
+
+  let activePanel = null;
+  if (tabName === "planner") activePanel = plannerPanel;
+  else if (tabName === "schedule") activePanel = schedulePanel;
+  else if (tabName === "courses") activePanel = coursesPanel;
+  else if (tabName === "archive") activePanel = archivePanel;
+
+  if (activePanel) {
+    const isReduced = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!isReduced) {
+      void activePanel.offsetWidth;
+      activePanel.classList.add("is-active-tab");
+    }
+  }
 }
 
 // Determines the local Monday-to-Sunday date range for the current week.
@@ -1059,6 +1146,7 @@ function updateWeeklyProgressBar() {
 
   if (totalDueThisWeek === 0) {
     container.classList.add("is-empty");
+    container.classList.remove("is-celebrating");
     textEl.textContent = "Nothing due this week";
     if (percentEl) {
       percentEl.style.display = "none";
@@ -1070,6 +1158,7 @@ function updateWeeklyProgressBar() {
     trackEl.setAttribute("aria-valuemin", "0");
     trackEl.setAttribute("aria-valuemax", "0");
     trackEl.setAttribute("aria-valuetext", "Nothing due this week");
+    previousWeeklyProgressPercent = 0;
   } else {
     container.classList.remove("is-empty");
     const percent = Math.min(100, Math.round((completedThisWeek / totalDueThisWeek) * 100));
@@ -1084,6 +1173,20 @@ function updateWeeklyProgressBar() {
     trackEl.setAttribute("aria-valuemin", "0");
     trackEl.setAttribute("aria-valuemax", String(totalDueThisWeek));
     trackEl.setAttribute("aria-valuetext", `${completedThisWeek} of ${totalDueThisWeek} done this week (${percent}%)`);
+
+    // Brief glow / pop celebration when weekly progress reaches 100%
+    if (percent === 100 && previousWeeklyProgressPercent !== null && previousWeeklyProgressPercent < 100) {
+      const isReduced = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!isReduced) {
+        container.classList.remove("is-celebrating");
+        void container.offsetWidth;
+        container.classList.add("is-celebrating");
+        setTimeout(() => {
+          container.classList.remove("is-celebrating");
+        }, 350);
+      }
+    }
+    previousWeeklyProgressPercent = percent;
   }
 }
 
@@ -1551,11 +1654,18 @@ document.addEventListener("DOMContentLoaded", function () {
     btnArchiveSelected.addEventListener("click", function () {
       const idsToArchive = Array.from(selectedAssignmentIds);
       if (idsToArchive.length === 0) return;
-      const archived = bulkArchiveAssignments(idsToArchive);
-      selectedAssignmentIds.clear();
-      setSelectMode(false);
-      renderApp();
-      showUndoToast(archived.length, "archive", archived);
+      const isReduced = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      idsToArchive.forEach(id => {
+        const el = document.getElementById(`card-${id}`);
+        if (el) el.classList.add("card-anim-archive");
+      });
+      setTimeout(() => {
+        const archived = bulkArchiveAssignments(idsToArchive);
+        selectedAssignmentIds.clear();
+        setSelectMode(false);
+        renderApp();
+        showUndoToast(archived.length, "archive", archived);
+      }, isReduced ? 0 : 200);
     });
   }
 
@@ -1563,12 +1673,17 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnArchiveCompleted = document.getElementById("btn-archive-completed");
   if (btnArchiveCompleted) {
     btnArchiveCompleted.addEventListener("click", function () {
-      const selectedCourse = document.getElementById("course-filter").value;
-      const archived = archiveCompletedAssignments(selectedCourse);
-      if (archived.length > 0) {
-        renderApp();
-        showUndoToast(archived.length, "archive", archived);
-      }
+      const isReduced = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const completedCards = document.querySelectorAll(".assignment-card.is-planned");
+      completedCards.forEach(c => c.classList.add("card-anim-archive"));
+      setTimeout(() => {
+        const selectedCourse = document.getElementById("course-filter").value;
+        const archived = archiveCompletedAssignments(selectedCourse);
+        if (archived.length > 0) {
+          renderApp();
+          showUndoToast(archived.length, "archive", archived);
+        }
+      }, isReduced ? 0 : 200);
     });
   }
 

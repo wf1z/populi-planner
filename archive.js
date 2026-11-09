@@ -239,13 +239,23 @@ function renderArchiveTab() {
       restoreBtn.textContent = "Restore";
       restoreBtn.title = "Restore this assignment to the active planner (unchecked)";
       restoreBtn.addEventListener("click", function () {
-        restoreAssignment(assignment.id);
-        if (typeof window.renderApp === "function") {
-          window.renderApp();
-        }
-        if (typeof window.showUndoToast === "function") {
-          window.showUndoToast(1, "restore", [assignment]);
-        }
+        const isReduced = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        card.classList.add("card-anim-archive");
+        setTimeout(() => {
+          restoreAssignment(assignment.id);
+          if (typeof window.markAssignmentEntering === "function") {
+            window.markAssignmentEntering(assignment.id);
+          }
+          if (typeof window.renderArchiveTab === "function") {
+            window.renderArchiveTab();
+          }
+          if (typeof window.renderApp === "function") {
+            window.renderApp();
+          }
+          if (typeof window.showUndoToast === "function") {
+            window.showUndoToast(1, "restore", [assignment]);
+          }
+        }, isReduced ? 0 : 200);
       });
 
       // Delete Forever button
