@@ -2,7 +2,11 @@
 // POPULI PLANNER THEME ENGINE & PALETTE PICKER (Stage 2)
 // Plain data objects per theme with id, display name, mode, preview, and variables.
 // Adding a new theme only requires appending a new object to THEMES array.
+// Wrapped in an IIFE to encapsulate private variables and prevent global identifier collisions.
 // ==========================================================================
+
+(function () {
+  'use strict';
 
 const THEMES = [
   {
@@ -1179,3 +1183,5 @@ if (typeof module !== 'undefined' && module.exports) {
     initThemePicker
   };
 }
+
+})();
