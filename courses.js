@@ -61,7 +61,7 @@ function renderCoursesTab() {
 
   // Sort courses alphabetically by course code (case-insensitive)
   const sortedCourses = [...courses].sort((a, b) =>
-    a.code.localeCompare(b.code, undefined, { sensitivity: "base" })
+    (a && a.code ? a.code : "").localeCompare(b && b.code ? b.code : "", undefined, { sensitivity: "base" })
   );
 
   sortedCourses.forEach(course => {

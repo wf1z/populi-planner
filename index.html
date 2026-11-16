@@ -37,6 +37,12 @@
         </nav>
       </div>
       <div class="top-bar-actions">
+        <!-- Player Level Badge -->
+        <div class="user-level-badge" id="user-level-badge" title="Level 1 (0 / 50 XP)" aria-label="Player Level 1">
+          <span class="level-badge-icon" aria-hidden="true">★</span>
+          <span class="level-badge-text" id="level-badge-text">Lv 1</span>
+        </div>
+
         <!-- Theme Palette Picker Button -->
         <button type="button" class="btn-theme-picker" id="btn-theme-picker" aria-label="Select theme" aria-haspopup="dialog" aria-expanded="false" title="Select theme">
           <svg class="theme-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -100,6 +106,20 @@
         </div>
         <div class="weekly-progress-track" role="progressbar" id="weekly-progress-bar" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-label="Weekly assignment progress" style="display: none;">
           <div class="weekly-progress-fill" id="weekly-progress-fill" style="width: 0%;"></div>
+        </div>
+      </section>
+
+      <!-- Player XP & Level Progress Card -->
+      <section class="game-xp-card" id="game-xp-card" aria-label="Player XP progress">
+        <div class="game-xp-header">
+          <div class="game-xp-level-info">
+            <span class="game-xp-star" aria-hidden="true">★</span>
+            <span class="game-xp-level-title" id="game-xp-level-title">Level 1</span>
+          </div>
+          <span class="game-xp-fraction" id="game-xp-fraction">0 / 50 XP</span>
+        </div>
+        <div class="game-xp-track" role="progressbar" id="game-xp-bar" aria-valuemin="0" aria-valuemax="50" aria-valuenow="0" aria-label="Level progress" aria-valuetext="Level 1, 0 of 50 XP (0%)">
+          <div class="game-xp-fill" id="game-xp-fill" style="width: 0%;"></div>
         </div>
       </section>
 
@@ -679,6 +699,12 @@
   <!-- Floating Toast Notification for Cloud Sync & Auth status -->
   <div id="auth-toast" class="auth-toast" style="display: none;" role="status" aria-live="polite"></div>
 
+  <!-- Floating Toast Notification for Level Up Celebration -->
+  <div id="game-levelup-toast" class="game-levelup-toast" style="display: none;" role="status" aria-live="polite">
+    <span class="levelup-toast-icon" aria-hidden="true">🎉</span>
+    <span class="levelup-toast-text" id="game-levelup-toast-text">Level Up! You reached Level 2!</span>
+  </div>
+
   <!-- Hidden file input for Backup Import -->
   <input type="file" id="import-file-input" accept=".json" style="display: none;">
 
@@ -694,6 +720,7 @@
   <script src="archive.js"></script>
   <script src="ics.js"></script>
   <script src="themes.js"></script>
+  <script src="game.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

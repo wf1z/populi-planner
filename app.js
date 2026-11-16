@@ -174,6 +174,13 @@ function createAssignmentCard(assignment) {
       card.classList.toggle("is-planned", isChecked);
       toggleAssignmentPlanned(assignment.id);
       updateWeeklyProgressBar();
+      if (window.PopuliGame && typeof window.PopuliGame.updateUI === "function") {
+        try {
+          window.PopuliGame.updateUI(getStoredAssignments());
+        } catch (gameErr) {
+          console.error("Failed to update PopuliGame UI:", gameErr);
+        }
+      }
 
       // Instantly update Archive completed button count if visible
       const btnArchiveCompleted = document.getElementById("btn-archive-completed");
@@ -555,7 +562,7 @@ function syncAllCourseDropdowns() {
   const currentFilterValue = courseFilter ? courseFilter.value : "all";
   const currentFormValue = formCourseSelect ? formCourseSelect.value : null;
 
-  const courses = getStoredCourses().sort((a, b) => a.code.localeCompare(b.code, undefined, { sensitivity: "base" }));
+  const courses = getStoredCourses().sort((a, b) => (a && a.code ? a.code : "").localeCompare(b && b.code ? b.code : "", undefined, { sensitivity: "base" }));
 
   // Rebuild course filter dropdown
   if (courseFilter) {
@@ -1217,6 +1224,15 @@ function renderApp() {
 
   // Update weekly progress bar at top of Planner tab
   updateWeeklyProgressBar();
+
+  // Update game layer (XP progress and player level)
+  if (window.PopuliGame && typeof window.PopuliGame.updateUI === "function") {
+    try {
+      window.PopuliGame.updateUI(allAssignments);
+    } catch (gameErr) {
+      console.error("Failed to update PopuliGame UI:", gameErr);
+    }
+  }
 
   // Show welcome state if no assignments exist at all
   if (allAssignments.length === 0) {
